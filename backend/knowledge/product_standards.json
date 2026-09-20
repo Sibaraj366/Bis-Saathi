@@ -1,0 +1,455 @@
+[
+  {
+    "product": "PVC insulated electric cables",
+    "keywords": [
+      "electric cable",
+      "electrical cable",
+      "PVC cable",
+      "wire",
+      "cable"
+    ],
+    "is_number": "IS 694:2010",
+    "standard_title": "Polyvinyl chloride insulated unsheathed and sheathed cables/cords with rigid and flexible conductor for rated voltages up to and including 1 100 V",
+    "certification": "Mandatory Certification",
+    "information": "BIS lists IS 694:2010 for PVC insulated cables/cords with rigid and flexible conductors for rated voltages up to and including 1100 V. The BIS standard details identify this standard as Mandatory Certification.",
+    "compliance_checklist": [
+      "Confirm that the product falls within the scope of IS 694:2010.",
+      "Review the applicable Indian Standard requirements for the product.",
+      "Review the applicable BIS product manual and Scheme of Inspection and Testing.",
+      "Ensure appropriate manufacturing infrastructure, process controls, quality control and testing capabilities are available.",
+      "Check the applicable BIS certification and testing process before applying."
+    ],
+    "source": "https://services.bis.gov.in/php/BIS_2.0/bisconnect/ISL/is_details?IDS=MTM4Mjk%3D"
+  },
+  {
+    "product": "Heavy Duty PVC insulated electric cables",
+    "keywords": [
+      "heavy duty cable",
+      "heavy duty electric cable",
+      "PVC insulated heavy duty cable",
+      "IS 1554",
+      "cable"
+    ],
+    "is_number": "IS 1554 (Part 1):1988",
+    "standard_title": "Specification for PVC Insulated (Heavy Duty) Electric Cables Part 1 for Working Voltages up to and Including 1100 V",
+    "certification": "Compulsory Certification",
+    "information": "BIS lists IS 1554 (Part 1):1988 under the Cables Quality Control Order in its Scheme-I compulsory certification information.",
+    "compliance_checklist": [
+      "Confirm that the product falls within the scope of IS 1554 (Part 1):1988.",
+      "Review the applicable Indian Standard requirements for the product.",
+      "Review the applicable BIS product manual and Scheme of Inspection and Testing.",
+      "Ensure appropriate manufacturing infrastructure, process controls, quality control and testing capabilities are available.",
+      "Check the applicable BIS certification and testing process before applying."
+    ],
+    "source": "https://www.bis.gov.in/product-certification/products-under-compulsory-certification/scheme-i-mark-scheme/?lang=en"
+  },
+  {
+    "product": "Heavy Duty PVC insulated electric cables",
+    "keywords": [
+      "heavy duty cable",
+      "heavy duty electric cable",
+      "PVC insulated heavy duty cable",
+      "IS 1554",
+      "cable"
+    ],
+    "is_number": "IS 1554 (Part 2):1988",
+    "standard_title": "Specification for PVC Insulated (Heavy Duty) Electric Cables Part 2 for Working Voltages from 3.3 kV up to and Including 11 kV",
+    "certification": "Compulsory Certification",
+    "information": "BIS lists IS 1554 (Part 2):1988 under the Cables Quality Control Order in its Scheme-I compulsory certification information.",
+    "compliance_checklist": [
+      "Confirm that the product falls within the scope of IS 1554 (Part 2):1988.",
+      "Review the applicable Indian Standard requirements for the product.",
+      "Review the applicable BIS product manual and Scheme of Inspection and Testing.",
+      "Ensure appropriate manufacturing infrastructure, process controls, quality control and testing capabilities are available.",
+      "Check the applicable BIS certification and testing process before applying."
+    ],
+    "source": "https://www.bis.gov.in/product-certification/products-under-compulsory-certification/scheme-i-mark-scheme/?lang=en"
+  },
+  {
+    "product": "Cement",
+    "keywords": [
+      "cement",
+      "ordinary portland cement",
+      "OPC",
+      "PPC",
+      "portland pozzolana cement"
+    ],
+    "is_number": "IS 269:2015",
+    "standard_title": "Ordinary Portland Cement — Specification",
+    "certification": "Compulsory Certification",
+    "information": "IS 269:2015 is the Indian Standard specification for Ordinary Portland Cement. Cement products covered by applicable Quality Control Orders require conformity with the applicable Indian Standard and BIS certification requirements.",
+    "compliance_checklist": [
+      "Confirm that the product falls within the scope of IS 269:2015.",
+      "Review the applicable Indian Standard requirements for Ordinary Portland Cement.",
+      "Review the applicable BIS product manual and Scheme of Inspection and Testing.",
+      "Ensure appropriate manufacturing infrastructure, process controls, quality control and testing capabilities are available.",
+      "Check the applicable BIS certification and testing process before applying."
+    ],
+    "source": "https://www.bis.gov.in/product-certification/products-under-compulsory-certification/scheme-i-mark-scheme/?lang=en"
+  },
+  {
+    "product": "Cement",
+    "keywords": [
+      "cement",
+      "PPC",
+      "portland pozzolana cement"
+    ],
+    "is_number": "IS 1489 (Part 1):2015",
+    "standard_title": "Portland-Pozzolana Cement — Specification, Part 1: Fly Ash Based",
+    "certification": "Compulsory Certification",
+    "information": "IS 1489 (Part 1):2015 specifies Portland-Pozzolana Cement, fly ash based. The applicable BIS certification and regulatory requirements should be verified against the current BIS requirements for the specific cement product.",
+    "compliance_checklist": [
+      "Confirm that the product falls within the scope of IS 1489 (Part 1):2015.",
+      "Review the applicable Indian Standard requirements for Portland-Pozzolana Cement.",
+      "Review the applicable BIS product manual and Scheme of Inspection and Testing.",
+      "Ensure appropriate manufacturing infrastructure, process controls, quality control and testing capabilities are available.",
+      "Check the applicable BIS certification and testing process before applying."
+    ],
+    "source": "https://www.bis.gov.in/product-certification/products-under-compulsory-certification/scheme-i-mark-scheme/?lang=en"
+  },
+  {
+    "is_number": "IS 1489 (Part 2):2015",
+    "product": "Portland Pozzolana Cement",
+    "standard_title": "Portland Pozzolana Cement — Specification: Part 2 Calcined Clay Based",
+    "category": "Construction",
+    "industry": "Construction",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for Portland Pozzolana Cement, Part 2, calcined clay based.",
+    "keywords": [
+      "cement",
+      "portland pozzolana cement",
+      "ppc",
+      "calcined clay cement",
+      "is 1489"
+    ],
+    "aliases": [
+      "PPC",
+      "pozzolana cement",
+      "calcined clay cement"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2015",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 455:2015",
+    "product": "Portland Slag Cement",
+    "standard_title": "Portland Slag Cement — Specification",
+    "category": "Construction",
+    "industry": "Construction",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for Portland slag cement.",
+    "keywords": [
+      "cement",
+      "portland slag cement",
+      "psc",
+      "slag cement",
+      "is 455"
+    ],
+    "aliases": [
+      "PSC",
+      "slag cement"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2015",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 8042:2015",
+    "product": "White Portland Cement",
+    "standard_title": "White Portland Cement — Specification",
+    "category": "Construction",
+    "industry": "Construction",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for White Portland Cement.",
+    "keywords": [
+      "cement",
+      "white cement",
+      "white portland cement",
+      "is 8042"
+    ],
+    "aliases": [
+      "white cement"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2015",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 4984:2016",
+    "product": "Polyethylene Pipes for Water Supply",
+    "standard_title": "Polyethylene Pipes for Water Supply — Specification",
+    "category": "Construction",
+    "industry": "Construction",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for polyethylene pipes used for water supply.",
+    "keywords": [
+      "polyethylene pipe",
+      "pe pipe",
+      "hdpe pipe",
+      "water supply pipe",
+      "plastic pipe",
+      "is 4984"
+    ],
+    "aliases": [
+      "HDPE pipe",
+      "PE pipe",
+      "water pipe"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2016",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 13428:2024",
+    "product": "Packaged Natural Mineral Water",
+    "standard_title": "Packaged Natural Mineral Water — Specification",
+    "category": "Food & Water",
+    "industry": "Food",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard product specification for packaged natural mineral water.",
+    "keywords": [
+      "mineral water",
+      "packaged natural mineral water",
+      "bottled water",
+      "natural mineral water",
+      "is 13428"
+    ],
+    "aliases": [
+      "mineral water",
+      "bottled mineral water"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2024",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 14543:2024",
+    "product": "Packaged Drinking Water",
+    "standard_title": "Packaged Drinking Water Other than Packaged Natural Mineral Water — Specification",
+    "category": "Food & Water",
+    "industry": "Food",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard product specification for packaged drinking water other than packaged natural mineral water.",
+    "keywords": [
+      "packaged drinking water",
+      "drinking water",
+      "bottled drinking water",
+      "water",
+      "is 14543"
+    ],
+    "aliases": [
+      "packaged water",
+      "bottled drinking water"
+    ],
+    "source": "https://lims.bis.gov.in/home/search_is_number/?is_number__doc_no=14543",
+    "revision_year": "2024",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 14625:2015",
+    "product": "Plastic Feeding Bottles",
+    "standard_title": "Plastics Feeding Bottles — Specification",
+    "category": "Consumer Products",
+    "industry": "Consumer Products",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for plastics feeding bottles.",
+    "keywords": [
+      "feeding bottle",
+      "plastic feeding bottle",
+      "baby bottle",
+      "consumer product",
+      "is 14625"
+    ],
+    "aliases": [
+      "baby bottle",
+      "feeding bottle"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2015",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 1293:2019",
+    "product": "Plugs and Socket-Outlets",
+    "standard_title": "Plugs and Socket-Outlets for Household and Similar Purposes of Rated Voltage up to and Including 250 V and Rated Current up to and Including 16 A — Specification",
+    "category": "Electrical Products",
+    "industry": "Electrical",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for household and similar plugs and socket-outlets up to 250 V and 16 A.",
+    "keywords": [
+      "plug",
+      "socket",
+      "socket outlet",
+      "electrical plug",
+      "electrical socket",
+      "is 1293"
+    ],
+    "aliases": [
+      "electrical plug",
+      "electrical socket",
+      "power socket"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2019",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 13252 (Part 1):2010",
+    "product": "Information Technology Equipment",
+    "standard_title": "Information Technology Equipment — Safety Part 1: General Requirements",
+    "category": "Electrical Products",
+    "industry": "Electronics & IT",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard covering safety requirements for information technology equipment, Part 1.",
+    "keywords": [
+      "it equipment",
+      "information technology equipment",
+      "computer",
+      "computer equipment",
+      "electronics",
+      "is 13252"
+    ],
+    "aliases": [
+      "computer",
+      "IT equipment",
+      "computer equipment"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2010",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 10500:2012",
+    "product": "Drinking Water",
+    "standard_title": "Drinking Water — Specification",
+    "category": "Food & Water",
+    "industry": "Water",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for drinking water.",
+    "keywords": [
+      "drinking water",
+      "water quality",
+      "potable water",
+      "water specification",
+      "is 10500"
+    ],
+    "aliases": [
+      "potable water",
+      "water quality"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2012",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 1374:2024",
+    "product": "Chicken Feeds",
+    "standard_title": "Chicken Feeds — Specification",
+    "category": "Food & Agriculture",
+    "industry": "Agriculture",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for chicken feeds.",
+    "keywords": [
+      "chicken feed",
+      "poultry feed",
+      "animal feed",
+      "feed",
+      "is 1374"
+    ],
+    "aliases": [
+      "poultry feed",
+      "chicken feed"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2024",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 16415:2015",
+    "product": "Composite Cement",
+    "standard_title": "Composite Cement — Specification",
+    "category": "Construction",
+    "industry": "Construction",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for composite cement.",
+    "keywords": [
+      "cement",
+      "composite cement",
+      "is 16415"
+    ],
+    "aliases": [
+      "composite cement"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2015",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 18189:2023",
+    "product": "Portland Calcined Clay Limestone Cement",
+    "standard_title": "Portland Calcined Clay Limestone Cement — Specification",
+    "category": "Construction",
+    "industry": "Construction",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for Portland Calcined Clay Limestone Cement.",
+    "keywords": [
+      "cement",
+      "pcc lc",
+      "calcined clay limestone cement",
+      "portland calcined clay limestone cement",
+      "is 18189"
+    ],
+    "aliases": [
+      "PCCLC",
+      "calcined clay limestone cement"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2023",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 16353:2015",
+    "product": "Portland Cement Clinker",
+    "standard_title": "Portland Cement Clinker — Specification",
+    "category": "Construction",
+    "industry": "Construction",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for Portland cement clinker.",
+    "keywords": [
+      "cement clinker",
+      "portland clinker",
+      "clinker",
+      "is 16353"
+    ],
+    "aliases": [
+      "cement clinker",
+      "clinker"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2015",
+    "compliance_checklist": []
+  },
+  {
+    "is_number": "IS 16354:2015",
+    "product": "Metakaolin",
+    "standard_title": "Metakaolin for Use in Cement, Cement Mortar and Concrete — Specification",
+    "category": "Construction",
+    "industry": "Construction",
+    "certification": "Verify with current official BIS information",
+    "information": "Indian Standard specification for metakaolin used in cement, cement mortar and concrete.",
+    "keywords": [
+      "metakaolin",
+      "cement",
+      "concrete",
+      "cement mortar",
+      "is 16354"
+    ],
+    "aliases": [
+      "metakaolin"
+    ],
+    "source": "https://standards.bis.gov.in/",
+    "revision_year": "2015",
+    "compliance_checklist": []
+  }
+]

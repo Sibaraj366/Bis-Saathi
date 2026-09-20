@@ -1,0 +1,2127 @@
+import os
+import json
+import re
+import uuid
+from io import BytesIO
+from pathlib import Path
+from typing import Any
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from google import genai
+from pydantic import BaseModel
+from pypdf import PdfReader
+
+
+# ============================================================
+# ENVIRONMENT
+# ============================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+
+load_dotenv(BASE_DIR / ".env")
+
+api_key = os.getenv("GEMINI_API_KEY")
+
+if not api_key:
+    raise RuntimeError(
+        "GEMINI_API_KEY is not configured in .env"
+    )
+
+client = genai.Client(api_key=api_key)
+
+
+# ============================================================
+# LOAD BIS KNOWLEDGE
+# ============================================================
+
+def load_json(filename: str):
+    with open(
+        BASE_DIR / "knowledge" / filename,
+        encoding="utf-8",
+    ) as file:
+        return json.load(file)
+
+
+bis_knowledge = load_json(
+    "bis_knowledge.json"
+)
+
+product_standards = load_json(
+    "product_standards.json"
+)
+
+
+# ============================================================
+# DOCUMENT STORAGE
+# ============================================================
+
+document_store: dict[str, dict[str, Any]] = {}
+
+
+# ============================================================
+# SUPPORTED LANGUAGES
+# ============================================================
+
+SUPPORTED_LANGUAGES = {
+    "english": "English",
+    "en": "English",
+
+    "hindi": "Hindi",
+    "hi": "Hindi",
+    "हिंदी": "Hindi",
+
+    "marathi": "Marathi",
+    "mr": "Marathi",
+    "मराठी": "Marathi",
+}
+
+
+# ============================================================
+# STOP WORDS
+# ============================================================
+
+STOP_WORDS = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "what",
+    "which",
+    "how",
+    "does",
+    "this",
+    "that",
+    "from",
+    "about",
+    "into",
+    "are",
+    "is",
+    "can",
+    "you",
+    "please",
+    "tell",
+    "me",
+    "give",
+    "get",
+    "want",
+    "need",
+    "show",
+    "explain",
+    "standard",
+    "bis",
+
+    "का",
+    "के",
+    "की",
+    "और",
+    "में",
+    "से",
+    "यह",
+    "क्या",
+    "कैसे",
+    "है",
+    "को",
+
+    "आणि",
+    "मध्ये",
+    "काय",
+    "कसे",
+    "आहे",
+    "ही",
+    "चा",
+    "ची",
+    "चे",
+}
+
+
+# ============================================================
+# PRODUCT ALIASES
+# ============================================================
+
+PRODUCT_ALIASES = {
+    "cement": [
+        "cement",
+        "सीमेंट",
+        "सिमेंट",
+    ],
+
+    "pvc cable": [
+        "pvc cable",
+        "pvc cables",
+        "electric cable",
+        "electrical cable",
+        "wire",
+        "wires",
+        "cable",
+        "cables",
+        "पीवीसी केबल",
+        "केबल",
+    ],
+
+    "electric appliance": [
+        "electrical appliance",
+        "electric appliance",
+        "household appliance",
+        "घरेलू उपकरण",
+        "विद्युत उपकरण",
+        "electrical appliances",
+    ],
+}
+
+
+# ============================================================
+# TEXT NORMALIZATION
+# ============================================================
+
+def normalize_text(value: str) -> str:
+    value = str(value or "").lower()
+
+    value = value.replace(
+        "–",
+        "-"
+    )
+
+    value = value.replace(
+        "—",
+        "-"
+    )
+
+    value = value.replace(
+        "_",
+        " "
+    )
+
+    value = re.sub(
+        r"\s+",
+        " ",
+        value,
+    )
+
+    return value.strip()
+
+
+# ============================================================
+# LANGUAGE NORMALIZATION
+# ============================================================
+
+def normalize_language(
+    value: str | None,
+) -> str:
+
+    if not value:
+        return "English"
+
+    normalized = normalize_text(
+        value
+    )
+
+    return SUPPORTED_LANGUAGES.get(
+        normalized,
+        "English",
+    )
+
+
+# ============================================================
+# GEMINI LANGUAGE INSTRUCTIONS
+# ============================================================
+
+def language_instruction(
+    language: str,
+) -> str:
+
+    if language == "Hindi":
+
+        return """
+RESPONSE LANGUAGE: Hindi
+
+Write the answer in clear, natural Hindi
+using Devanagari script.
+
+Keep IS numbers, technical identifiers,
+product names, official names and URLs accurate.
+
+Do not translate URLs or IS numbers.
+"""
+
+    if language == "Marathi":
+
+        return """
+RESPONSE LANGUAGE: Marathi
+
+Write the answer in clear, natural Marathi
+using Devanagari script.
+
+Keep IS numbers, technical identifiers,
+product names, official names and URLs accurate.
+
+Do not translate URLs or IS numbers.
+"""
+
+    return """
+RESPONSE LANGUAGE: English
+
+Write the answer in clear, simple English.
+
+Keep IS numbers, technical identifiers,
+product names, official names and URLs accurate.
+"""
+
+
+# ============================================================
+# TOKENIZATION
+# ============================================================
+
+def tokenize(
+    text: str,
+) -> set[str]:
+
+    return {
+        word
+
+        for word in re.findall(
+            r"[a-zA-Z0-9\u0900-\u097F]+",
+            normalize_text(text),
+        )
+
+        if len(word) > 2
+        and word not in STOP_WORDS
+    }
+
+
+# ============================================================
+# IS NUMBER NORMALIZATION
+# ============================================================
+
+def normalize_is_number(
+    value: str,
+) -> str:
+
+    value = normalize_text(
+        value
+    )
+
+    value = value.replace(
+        "-",
+        " "
+    )
+
+    value = value.replace(
+        ":",
+        " "
+    )
+
+    value = re.sub(
+        r"\(\s*part\s*",
+        " part ",
+        value,
+    )
+
+    value = re.sub(
+        r"\s*\)",
+        "",
+        value,
+    )
+
+    value = re.sub(
+        r"\s+",
+        " ",
+        value,
+    )
+
+    return value.strip()
+
+
+# ============================================================
+# EXTRACT IS NUMBERS
+# ============================================================
+
+def extract_is_numbers(
+    question: str,
+) -> list[str]:
+
+    patterns = [
+
+        # IS 1554 (Part 1):1988
+        r"\bis\s*[-:]?\s*(\d{2,6})\s*"
+        r"\(\s*part\s*(\d+)\s*\)\s*"
+        r"[:\-]?\s*(\d{4})\b",
+
+        # IS 269:2015
+        # IS-269:2015
+        # IS 269 2015
+        r"\bis\s*[-:]?\s*(\d{2,6})\s*"
+        r"[:\-]?\s*(\d{4})\b",
+    ]
+
+    found = []
+
+    for pattern in patterns:
+
+        for match in re.finditer(
+            pattern,
+            question or "",
+            flags=re.IGNORECASE,
+        ):
+
+            groups = match.groups()
+
+            if len(groups) == 3:
+
+                value = (
+                    f"is {groups[0]} "
+                    f"part {groups[1]} "
+                    f"{groups[2]}"
+                )
+
+            else:
+
+                value = (
+                    f"is {groups[0]} "
+                    f"{groups[1]}"
+                )
+
+            if value not in found:
+                found.append(value)
+
+    return found
+
+
+# ============================================================
+# BUILD SEARCH TEXT
+# ============================================================
+
+def item_search_text(
+    item: dict,
+) -> str:
+
+    return " ".join(
+        [
+            str(item.get("topic", "")),
+            str(item.get("content", "")),
+            str(item.get("product", "")),
+            str(item.get("standard_title", "")),
+            str(item.get("is_number", "")),
+            " ".join(
+                map(
+                    str,
+                    item.get(
+                        "keywords",
+                        [],
+                    ),
+                )
+            ),
+            str(item.get("industry", "")),
+            str(item.get("category", "")),
+        ]
+    )
+
+
+# ============================================================
+# PRODUCT ALIAS BONUS
+# ============================================================
+
+def alias_bonus(
+    question: str,
+    item: dict,
+) -> int:
+
+    question_normalized = normalize_text(
+        question
+    )
+
+    item_text = normalize_text(
+        item_search_text(item)
+    )
+
+    bonus = 0
+
+    product = normalize_text(
+        item.get(
+            "product",
+            "",
+        )
+    )
+
+    if (
+        product
+        and product in question_normalized
+    ):
+        bonus += 8
+
+    for aliases in PRODUCT_ALIASES.values():
+
+        question_has_alias = any(
+            alias in question_normalized
+            for alias in aliases
+        )
+
+        item_has_alias = any(
+            normalize_text(alias)
+            in item_text
+            for alias in aliases
+        )
+
+        if question_has_alias and item_has_alias:
+            bonus += 4
+
+    return bonus
+
+
+# ============================================================
+# GENERAL ITEM SCORING
+# ============================================================
+
+def score_item(
+    question: str,
+    item: dict,
+) -> int:
+
+    question_tokens = tokenize(
+        question
+    )
+
+    item_text = normalize_text(
+        item_search_text(item)
+    )
+
+    item_tokens = tokenize(
+        item_text
+    )
+
+    overlap = len(
+        question_tokens
+        & item_tokens
+    )
+
+    score = overlap * 2
+
+    score += alias_bonus(
+        question,
+        item,
+    )
+
+    question_normalized = normalize_text(
+        question
+    )
+
+    field_weights = [
+        ("product", 6),
+        ("standard_title", 4),
+        ("topic", 3),
+        ("industry", 3),
+        ("category", 3),
+    ]
+
+    for field, weight in field_weights:
+
+        value = normalize_text(
+            item.get(
+                field,
+                "",
+            )
+        )
+
+        if (
+            value
+            and value in question_normalized
+        ):
+            score += weight
+
+    return score
+
+
+# ============================================================
+# GENERAL BIS KNOWLEDGE RETRIEVAL
+# ============================================================
+
+def retrieve_bis_knowledge(
+    question: str,
+    top_k: int = 4,
+):
+
+    ranked = [
+        (
+            score_item(
+                question,
+                item,
+            ),
+            item,
+        )
+
+        for item in bis_knowledge
+    ]
+
+    ranked.sort(
+        key=lambda value: value[0],
+        reverse=True,
+    )
+
+    return [
+        item
+
+        for score, item in ranked
+
+        if score > 0
+    ][:top_k]
+
+
+# ============================================================
+# EXACT STANDARD RETRIEVAL
+# ============================================================
+
+def retrieve_standard_by_is_number(
+    question: str,
+    top_k: int = 3,
+):
+
+    requested_numbers = (
+        extract_is_numbers(
+            question
+        )
+    )
+
+    if not requested_numbers:
+        return []
+
+    results = []
+
+    for item in product_standards:
+
+        item_number = normalize_is_number(
+            item.get(
+                "is_number",
+                "",
+            )
+        )
+
+        if any(
+            item_number == requested
+            for requested in requested_numbers
+        ):
+
+            if item not in results:
+                results.append(item)
+
+    return results[:top_k]
+
+
+# ============================================================
+# PRODUCT STANDARD RETRIEVAL
+# ============================================================
+
+def retrieve_product_standards(
+    question: str,
+    top_k: int = 5,
+):
+
+    ranked = [
+        (
+            score_item(
+                question,
+                item,
+            ),
+            item,
+        )
+
+        for item in product_standards
+    ]
+
+    ranked.sort(
+        key=lambda value: value[0],
+        reverse=True,
+    )
+
+    return [
+        item
+
+        for score, item in ranked
+
+        if score > 0
+    ][:top_k]
+
+
+# ============================================================
+# COMBINE STANDARD RESULTS
+# ============================================================
+
+def combine_standard_results(
+    exact,
+    related,
+    top_k: int = 5,
+):
+
+    results = []
+
+    for item in list(exact) + list(related):
+
+        if item not in results:
+            results.append(item)
+
+    return results[:top_k]
+
+
+# ============================================================
+# INTENT DETECTION
+# ============================================================
+
+def detect_intent(
+    question: str,
+) -> str:
+
+    question_normalized = normalize_text(
+        question
+    )
+
+    if extract_is_numbers(question):
+        return "standard_lookup"
+
+    compliance_words = [
+        "compliance",
+        "comply",
+        "certification",
+        "licence",
+        "license",
+        "mandatory",
+        "requirement",
+        "requirements",
+        "अनुपालन",
+        "प्रमाणीकरण",
+        "प्रमाणपत्र",
+        "आवश्यकता",
+        "प्रमाणन",
+    ]
+
+    if any(
+        word in question_normalized
+        for word in compliance_words
+    ):
+        return "compliance"
+
+    service_words = [
+        "service",
+        "services",
+        "apply",
+        "renew",
+        "registration",
+        "complaint",
+        "सेवा",
+        "आवेदन",
+        "नवीनीकरण",
+        "शिकायत",
+    ]
+
+    if any(
+        word in question_normalized
+        for word in service_words
+    ):
+        return "bis_service"
+
+    standard_words = [
+        "standard",
+        "standards",
+        "is number",
+        "indian standard",
+        "मानक",
+        "आईएस",
+    ]
+
+    if any(
+        word in question_normalized
+        for word in standard_words
+    ):
+        return "standard_search"
+
+    return "general_bis"
+
+
+# ============================================================
+# FORMAT STANDARD
+# ============================================================
+
+def format_standard(
+    item: dict,
+) -> str:
+
+    checklist = (
+        item.get(
+            "compliance_checklist"
+        )
+        or []
+    )
+
+    checklist_text = "\n".join(
+        f"- {entry}"
+        for entry in checklist
+    )
+
+    if not checklist_text:
+        checklist_text = "Not provided"
+
+    return (
+        f"Product: "
+        f"{item.get('product', '')}\n"
+
+        f"IS Number: "
+        f"{item.get('is_number', '')}\n"
+
+        f"Standard Title: "
+        f"{item.get('standard_title', '')}\n"
+
+        f"Certification Status: "
+        f"{item.get('certification', '')}\n"
+
+        f"Information: "
+        f"{item.get('information', '')}\n"
+
+        f"Compliance Checklist:\n"
+        f"{checklist_text}\n"
+
+        f"Official BIS Source: "
+        f"{item.get('source', '')}"
+    )
+
+
+# ============================================================
+# SOURCE COLLECTION
+# ============================================================
+
+def collect_sources(
+    *groups,
+):
+
+    sources = []
+
+    for group in groups:
+
+        for item in group or []:
+
+            source = item.get(
+                "source"
+            )
+
+            if (
+                source
+                and source not in sources
+            ):
+                sources.append(source)
+
+    return sources
+
+
+# ============================================================
+# BUILD CHAT RETRIEVAL CONTEXT
+# ============================================================
+
+def build_chat_context(
+    question: str,
+):
+
+    exact = retrieve_standard_by_is_number(
+        question,
+        top_k=3,
+    )
+
+    related = retrieve_product_standards(
+        question,
+        top_k=5,
+    )
+
+    general = retrieve_bis_knowledge(
+        question,
+        top_k=4,
+    )
+
+    standards = combine_standard_results(
+        exact,
+        related,
+        top_k=6,
+    )
+
+    sections = []
+
+    # Exact standards
+    if exact:
+
+        sections.append(
+            "EXACT BIS STANDARD MATCHES:\n"
+            +
+            "\n\n".join(
+                format_standard(item)
+                for item in exact
+            )
+        )
+
+    # Related standards
+    extra = [
+        item
+        for item in related
+        if item not in exact
+    ]
+
+    if extra:
+
+        sections.append(
+            "RELATED BIS PRODUCT STANDARDS:\n"
+            +
+            "\n\n".join(
+                format_standard(item)
+                for item in extra
+            )
+        )
+
+    # General BIS information
+    if general:
+
+        general_text = "\n\n".join(
+            (
+                f"Topic: "
+                f"{item.get('topic', '')}\n"
+
+                f"Information: "
+                f"{item.get('content', '')}\n"
+
+                f"Official BIS Source: "
+                f"{item.get('source', '')}"
+            )
+
+            for item in general
+        )
+
+        sections.append(
+            "GENERAL BIS INFORMATION:\n"
+            + general_text
+        )
+
+    if sections:
+
+        context = "\n\n".join(
+            sections
+        )
+
+    else:
+
+        context = (
+            "No directly matching information "
+            "was found in the current BIS "
+            "knowledge base."
+        )
+
+    return (
+        exact,
+        extra,
+        general,
+        standards,
+        context,
+    )
+
+
+# ============================================================
+# FASTAPI APPLICATION
+# ============================================================
+
+app = FastAPI(
+    title="BIS Saathi API",
+    description=(
+        "Backend API for the BIS Saathi "
+        "AI assistant"
+    ),
+    version="1.1.0",
+)
+
+
+# ============================================================
+# REQUEST MODELS
+# ============================================================
+
+class ChatRequest(BaseModel):
+
+    message: str
+
+    language: str = "English"
+
+
+class ComplianceRequest(BaseModel):
+
+    product: str
+
+    language: str = "English"
+
+
+class DocumentQuestionRequest(BaseModel):
+
+    document_id: str
+
+    question: str
+
+    language: str = "English"
+
+
+# ============================================================
+# CORS
+# ============================================================
+
+app.add_middleware(
+    CORSMiddleware,
+
+    allow_origins=["*"],
+
+    allow_credentials=True,
+
+    allow_methods=["*"],
+
+    allow_headers=["*"],
+)
+
+
+# ============================================================
+# ROOT
+# ============================================================
+
+@app.get("/")
+def root():
+
+    return {
+        "app": "BIS Saathi",
+
+        "status": "running",
+
+        "message": (
+            "BIS Saathi backend is working"
+        ),
+
+        "version": "1.1.0",
+    }
+
+
+# ============================================================
+# HEALTH
+# ============================================================
+
+@app.get("/api/health")
+def health():
+
+    return {
+        "status": "healthy",
+
+        "service": "bis-saathi-api",
+
+        "version": "1.1.0",
+    }
+
+
+# ============================================================
+# CHAT API
+# ============================================================
+
+@app.post("/api/chat")
+def chat(
+    request: ChatRequest,
+):
+
+    question = request.message.strip()
+
+    language = normalize_language(
+        request.language
+    )
+
+    if not question:
+
+        return {
+            "answer": (
+                "Please enter a question "
+                "about BIS standards, "
+                "certification or services."
+            ),
+
+            "sources": [],
+        }
+
+    # --------------------------------------------------------
+    # Detect user intent
+    # --------------------------------------------------------
+
+    intent = detect_intent(
+        question
+    )
+
+    # --------------------------------------------------------
+    # Retrieve BIS information
+    # --------------------------------------------------------
+
+    (
+        exact,
+        extra,
+        general,
+        standards,
+        context,
+    ) = build_chat_context(
+        question
+    )
+
+    # --------------------------------------------------------
+    # Retrieval mode
+    # --------------------------------------------------------
+
+    if exact:
+
+        retrieval_mode = (
+            "EXACT STANDARD"
+        )
+
+    elif extra:
+
+        retrieval_mode = (
+            "PRODUCT STANDARD"
+        )
+
+    elif general:
+
+        retrieval_mode = (
+            "GENERAL BIS"
+        )
+
+    else:
+
+        retrieval_mode = (
+            "NO DIRECT MATCH"
+        )
+
+    # --------------------------------------------------------
+    # Gemini prompt
+    # --------------------------------------------------------
+
+    prompt = f"""
+You are BIS Saathi, an AI assistant
+specialized in the Bureau of Indian Standards (BIS).
+
+{language_instruction(language)}
+
+Your job is to help Indian consumers,
+manufacturers, businesses and industries
+understand BIS standards, certification
+and BIS services.
+
+USER INTENT:
+{intent}
+
+RETRIEVAL MODE:
+{retrieval_mode}
+
+The following information was retrieved
+from the BIS Saathi knowledge base.
+
+Use it as the primary evidence.
+
+STRICT GROUNDING RULES:
+
+1. Exact IS-number matches have the
+   highest priority.
+
+2. Product-specific records have the
+   next priority.
+
+3. General BIS information is supplementary.
+
+4. Never invent:
+   - IS numbers
+   - standard titles
+   - licence numbers
+   - QCO requirements
+   - fees
+   - testing requirements
+   - legal obligations
+   - application procedures
+
+5. Never infer mandatory BIS certification
+   from a keyword match alone.
+
+6. Use only checklist items explicitly
+   present in retrieved records.
+
+7. If the knowledge base is insufficient,
+   clearly say so.
+
+8. When information is insufficient,
+   tell the user to verify the current
+   official BIS source.
+
+9. If multiple standards are relevant,
+   explain the difference rather than
+   silently selecting one.
+
+10. Keep the answer practical and concise.
+
+11. Mention the exact IS number whenever
+    an exact standard was retrieved.
+
+12. Answer only in the selected language.
+
+13. Do not translate IS numbers.
+
+14. Do not translate official URLs.
+
+15. Do not pretend that general knowledge
+    came from BIS if it was not retrieved.
+
+PREFERRED STRUCTURE FOR AN EXACT STANDARD:
+
+**BIS Standard**
+[IS number]
+
+**Product**
+[product/title]
+
+**Certification**
+[status if available]
+
+**What it means**
+[simple explanation]
+
+**Key Information**
+[grounded information]
+
+**Compliance Checklist**
+[only when available]
+
+**Official Source**
+[official source URL]
+
+For general questions,
+use a natural structure instead.
+
+RETRIEVED BIS INFORMATION:
+
+{context}
+
+USER QUESTION:
+
+{question}
+"""
+
+    # --------------------------------------------------------
+    # Gemini
+    # --------------------------------------------------------
+
+    try:
+
+        response = client.models.generate_content(
+            model="gemini-3.5-flash-lite",
+            contents=prompt,
+        )
+
+        answer = (
+            response.text
+            or
+            "I could not generate an answer. "
+            "Please try again."
+        )
+
+    except Exception as exc:
+
+        print(
+            "Gemini chat error:",
+            type(exc).__name__,
+            exc,
+        )
+
+        return {
+            "answer": (
+                "The AI service could not "
+                "generate a response right now. "
+                "Please try again."
+            ),
+
+            "sources": collect_sources(
+                general,
+                exact,
+                extra,
+            ),
+        }
+
+    # --------------------------------------------------------
+    # Return answer
+    # --------------------------------------------------------
+
+    return {
+
+        "answer": answer,
+
+        "sources": collect_sources(
+            general,
+            exact,
+            extra,
+        ),
+
+        "intent": intent,
+
+        "retrievalMode": retrieval_mode,
+
+        "matchedStandards": [
+            {
+                "isNumber": item.get(
+                    "is_number",
+                    "",
+                ),
+
+                "title": item.get(
+                    "standard_title",
+                    "",
+                ),
+
+                "product": item.get(
+                    "product",
+                    "",
+                ),
+
+                "source": item.get(
+                    "source",
+                    "",
+                ),
+            }
+
+            for item in standards
+        ],
+    }
+
+
+# ============================================================
+# COMPLIANCE API
+# ============================================================
+
+@app.post("/api/compliance")
+def compliance(
+    request: ComplianceRequest,
+):
+
+    product = request.product.strip()
+
+    language = normalize_language(
+        request.language
+    )
+
+    if not product:
+
+        return {
+            "success": False,
+
+            "message": (
+                "Please enter a product name."
+            ),
+
+            "standard": None,
+
+            "summary": None,
+
+            "checklist": [],
+
+            "sources": [],
+        }
+
+    # --------------------------------------------------------
+    # Exact match
+    # --------------------------------------------------------
+
+    exact = retrieve_standard_by_is_number(
+        product,
+        top_k=3,
+    )
+
+    # --------------------------------------------------------
+    # Product match
+    # --------------------------------------------------------
+
+    related = retrieve_product_standards(
+        product,
+        top_k=5,
+    )
+
+    # --------------------------------------------------------
+    # Combine
+    # --------------------------------------------------------
+
+    matched = combine_standard_results(
+        exact,
+        related,
+        top_k=5,
+    )
+
+    # --------------------------------------------------------
+    # No match
+    # --------------------------------------------------------
+
+    if not matched:
+
+        messages = {
+
+            "English":
+                (
+                    "No directly matching BIS "
+                    "standard was found in the "
+                    "current knowledge base. "
+                    "Please verify the applicable "
+                    "standard on the official "
+                    "BIS website."
+                ),
+
+            "Hindi":
+                (
+                    "वर्तमान ज्ञान आधार में सीधे "
+                    "मेल खाने वाला BIS मानक नहीं "
+                    "मिला। कृपया आधिकारिक BIS "
+                    "वेबसाइट पर लागू मानक सत्यापित करें।"
+                ),
+
+            "Marathi":
+                (
+                    "सध्याच्या ज्ञान आधारात थेट "
+                    "जुळणारे BIS मानक सापडले नाही. "
+                    "कृपया अधिकृत BIS वेबसाइटवर "
+                    "लागू मानकाची पडताळणी करा."
+                ),
+        }
+
+        return {
+
+            "success": False,
+
+            "message": messages[
+                language
+            ],
+
+            "standard": None,
+
+            "summary": None,
+
+            "checklist": [],
+
+            "sources": [],
+        }
+
+    # --------------------------------------------------------
+    # Select strongest match
+    # --------------------------------------------------------
+
+    standard = matched[0]
+
+    # --------------------------------------------------------
+    # Checklist comes ONLY from BIS data
+    # --------------------------------------------------------
+
+    checklist = list(
+        standard.get(
+            "compliance_checklist"
+        )
+        or []
+    )
+
+    # --------------------------------------------------------
+    # Gemini compliance explanation
+    # --------------------------------------------------------
+
+    prompt = f"""
+You are BIS Saathi,
+an AI assistant for BIS compliance guidance.
+
+{language_instruction(language)}
+
+USER PRODUCT:
+
+{product}
+
+RETRIEVED BIS RECORD:
+
+{format_standard(standard)}
+
+Give a short practical explanation
+based ONLY on this retrieved BIS record.
+
+IMPORTANT:
+
+Do not invent requirements.
+
+Do not invent fees.
+
+Do not invent testing requirements.
+
+Do not invent licence numbers.
+
+Do not invent government rules.
+
+Do not add checklist items.
+
+Do not claim mandatory status unless
+the retrieved record supports it.
+
+Mention the exact IS number.
+
+Tell the user to verify current
+official BIS requirements before making
+a final compliance decision.
+
+Keep the explanation to 3-5 short sentences.
+"""
+
+    try:
+
+        response = client.models.generate_content(
+            model="gemini-3.5-flash-lite",
+            contents=prompt,
+        )
+
+        summary = (
+            response.text
+            or
+            "Compliance information is available "
+            "from the retrieved BIS standard."
+        )
+
+    except Exception as exc:
+
+        print(
+            "Gemini compliance error:",
+            type(exc).__name__,
+            exc,
+        )
+
+        summary = (
+            "The standard was matched successfully, "
+            "but an AI explanation could not be "
+            "generated. Please review the official "
+            "BIS source."
+        )
+
+    source = standard.get(
+        "source"
+    )
+
+    return {
+
+        "success": True,
+
+        "message": (
+            "BIS compliance information generated."
+        ),
+
+        "standard": {
+
+            "product": standard.get(
+                "product",
+                "",
+            ),
+
+            "isNumber": standard.get(
+                "is_number",
+                "",
+            ),
+
+            "title": standard.get(
+                "standard_title",
+                "",
+            ),
+
+            "certification": standard.get(
+                "certification",
+                "",
+            ),
+
+            "information": standard.get(
+                "information",
+                "",
+            ),
+        },
+
+        "summary": summary,
+
+        "checklist": checklist,
+
+        "sources": (
+            [source]
+            if source
+            else []
+        ),
+    }
+
+
+# ============================================================
+# DOCUMENT CHUNKING
+# ============================================================
+
+def make_document_chunks(
+    text: str,
+    page_texts: list[str],
+    chunk_size: int = 1800,
+    overlap: int = 250,
+):
+
+    chunks = []
+
+    for page_number, page_text in enumerate(
+        page_texts,
+        start=1,
+    ):
+
+        clean = re.sub(
+            r"\s+",
+            " ",
+            page_text or "",
+        ).strip()
+
+        if not clean:
+            continue
+
+        start = 0
+
+        while start < len(clean):
+
+            end = min(
+                start + chunk_size,
+                len(clean),
+            )
+
+            chunks.append(
+                {
+                    "page": page_number,
+                    "text": clean[start:end],
+                }
+            )
+
+            if end >= len(clean):
+                break
+
+            start = max(
+                0,
+                end - overlap,
+            )
+
+    # Fallback
+    if not chunks and text:
+
+        clean = re.sub(
+            r"\s+",
+            " ",
+            text,
+        ).strip()
+
+        step = (
+            chunk_size - overlap
+        )
+
+        for start in range(
+            0,
+            len(clean),
+            step,
+        ):
+
+            chunks.append(
+                {
+                    "page": None,
+                    "text": clean[
+                        start:
+                        start + chunk_size
+                    ],
+                }
+            )
+
+    return chunks
+
+
+# ============================================================
+# DOCUMENT RETRIEVAL
+# ============================================================
+
+def retrieve_document_chunks(
+    question: str,
+    chunks: list[dict],
+    top_k: int = 6,
+):
+
+    question_tokens = tokenize(
+        question
+    )
+
+    ranked = []
+
+    for chunk in chunks:
+
+        chunk_tokens = tokenize(
+            chunk["text"]
+        )
+
+        overlap = len(
+            question_tokens
+            & chunk_tokens
+        )
+
+        phrase_bonus = 0
+
+        if (
+            normalize_text(question)
+            in
+            normalize_text(
+                chunk["text"]
+            )
+        ):
+            phrase_bonus = 4
+
+        score = (
+            overlap * 3
+            + phrase_bonus
+        )
+
+        ranked.append(
+            (
+                score,
+                chunk,
+            )
+        )
+
+    ranked.sort(
+        key=lambda value: value[0],
+        reverse=True,
+    )
+
+    useful = [
+        chunk
+
+        for score, chunk in ranked
+
+        if score > 0
+    ][:top_k]
+
+    if useful:
+        return useful
+
+    return chunks[:top_k]
+
+
+# ============================================================
+# DOCUMENT UPLOAD
+# ============================================================
+
+@app.post(
+    "/api/document/upload"
+)
+async def upload_document(
+    file: UploadFile = File(...),
+):
+
+    filename = (
+        file.filename
+        or
+        "document.pdf"
+    )
+
+    # --------------------------------------------------------
+    # PDF validation
+    # --------------------------------------------------------
+
+    if not filename.lower().endswith(
+        ".pdf"
+    ):
+
+        return {
+
+            "success": False,
+
+            "message": (
+                "Only PDF files are supported."
+            ),
+
+            "documentId": None,
+
+            "filename": filename,
+
+            "pages": 0,
+        }
+
+    # --------------------------------------------------------
+    # Read file
+    # --------------------------------------------------------
+
+    file_bytes = await file.read()
+
+    if not file_bytes:
+
+        return {
+
+            "success": False,
+
+            "message": (
+                "The uploaded PDF is empty."
+            ),
+
+            "documentId": None,
+
+            "filename": filename,
+
+            "pages": 0,
+        }
+
+    # --------------------------------------------------------
+    # Extract PDF text
+    # --------------------------------------------------------
+
+    try:
+
+        reader = PdfReader(
+            BytesIO(file_bytes)
+        )
+
+        page_texts = []
+
+        for page in reader.pages:
+
+            page_text = (
+                page.extract_text()
+                or ""
+            )
+
+            page_texts.append(
+                page_text.strip()
+            )
+
+        pages = len(
+            page_texts
+        )
+
+    except Exception as exc:
+
+        print(
+            "PDF extraction error:",
+            type(exc).__name__,
+            exc,
+        )
+
+        return {
+
+            "success": False,
+
+            "message": (
+                "Could not read the PDF. "
+                "Please upload a valid PDF file."
+            ),
+
+            "documentId": None,
+
+            "filename": filename,
+
+            "pages": 0,
+        }
+
+    # --------------------------------------------------------
+    # Combine extracted text
+    # --------------------------------------------------------
+
+    extracted_text = "\n\n".join(
+        page
+        for page in page_texts
+        if page
+    ).strip()
+
+    if not extracted_text:
+
+        return {
+
+            "success": False,
+
+            "message": (
+                "The PDF contains no readable text. "
+                "Scanned PDFs will need OCR support."
+            ),
+
+            "documentId": None,
+
+            "filename": filename,
+
+            "pages": pages,
+        }
+
+    # --------------------------------------------------------
+    # Create chunks
+    # --------------------------------------------------------
+
+    chunks = make_document_chunks(
+        extracted_text,
+        page_texts,
+    )
+
+    # --------------------------------------------------------
+    # Document ID
+    # --------------------------------------------------------
+
+    document_id = str(
+        uuid.uuid4()
+    )
+
+    # --------------------------------------------------------
+    # Store document
+    # --------------------------------------------------------
+
+    document_store[
+        document_id
+    ] = {
+
+        "filename": filename,
+
+        "pages": pages,
+
+        "text": extracted_text,
+
+        "page_texts": page_texts,
+
+        "chunks": chunks,
+    }
+
+    # --------------------------------------------------------
+    # Return
+    # --------------------------------------------------------
+
+    return {
+
+        "success": True,
+
+        "message": (
+            "PDF uploaded and processed successfully."
+        ),
+
+        "documentId": document_id,
+
+        "filename": filename,
+
+        "pages": pages,
+
+        "textLength": len(
+            extracted_text
+        ),
+
+        "chunks": len(
+            chunks
+        ),
+    }
+
+
+# ============================================================
+# DOCUMENT QUESTION
+# ============================================================
+
+@app.post(
+    "/api/document/ask"
+)
+def ask_document(
+    request: DocumentQuestionRequest,
+):
+
+    language = normalize_language(
+        request.language
+    )
+
+    question = (
+        request.question.strip()
+    )
+
+    # --------------------------------------------------------
+    # Validate question
+    # --------------------------------------------------------
+
+    if not question:
+
+        return {
+
+            "success": False,
+
+            "message": (
+                "Please enter a question."
+            ),
+
+            "answer": "",
+        }
+
+    # --------------------------------------------------------
+    # Find document
+    # --------------------------------------------------------
+
+    document = document_store.get(
+        request.document_id
+    )
+
+    if not document:
+
+        return {
+
+            "success": False,
+
+            "message": (
+                "Document not found. "
+                "Please upload the PDF again."
+            ),
+
+            "answer": "",
+        }
+
+    # --------------------------------------------------------
+    # Retrieve relevant chunks
+    # --------------------------------------------------------
+
+    retrieved_chunks = (
+        retrieve_document_chunks(
+            question,
+            document["chunks"],
+            top_k=6,
+        )
+    )
+
+    # --------------------------------------------------------
+    # Build context
+    # --------------------------------------------------------
+
+    context_parts = []
+
+    for chunk in retrieved_chunks:
+
+        page = chunk.get(
+            "page"
+        )
+
+        text = chunk.get(
+            "text",
+            "",
+        )
+
+        if page:
+
+            context_parts.append(
+                f"[Page {page}] {text}"
+            )
+
+        else:
+
+            context_parts.append(
+                text
+            )
+
+    context = "\n\n".join(
+        context_parts
+    )
+
+    # --------------------------------------------------------
+    # Page references
+    # --------------------------------------------------------
+
+    referenced_pages = sorted(
+        {
+            chunk["page"]
+
+            for chunk in retrieved_chunks
+
+            if chunk.get("page")
+            is not None
+        }
+    )
+
+    # --------------------------------------------------------
+    # Gemini document prompt
+    # --------------------------------------------------------
+
+    prompt = f"""
+You are BIS Saathi,
+answering a question from an uploaded document.
+
+{language_instruction(language)}
+
+Answer ONLY from the retrieved document passages.
+
+Do not use outside knowledge
+to fill missing information.
+
+If the answer is not supported,
+say that the uploaded document
+does not provide enough information.
+
+Do not invent legal or compliance
+requirements.
+
+When useful, mention the supporting
+page number.
+
+DOCUMENT:
+
+{document["filename"]}
+
+RETRIEVED DOCUMENT PASSAGES:
+
+{context}
+
+USER QUESTION:
+
+{question}
+"""
+
+    # --------------------------------------------------------
+    # Gemini
+    # --------------------------------------------------------
+
+    try:
+
+        response = client.models.generate_content(
+            model="gemini-3.5-flash-lite",
+            contents=prompt,
+        )
+
+        answer = (
+            response.text
+            or
+            "I could not generate an answer "
+            "from the document."
+        )
+
+    except Exception as exc:
+
+        print(
+            "Gemini document error:",
+            type(exc).__name__,
+            exc,
+        )
+
+        return {
+
+            "success": False,
+
+            "message": (
+                "The AI service could not answer "
+                "the document question right now."
+            ),
+
+            "answer": "",
+
+            "filename": document[
+                "filename"
+            ],
+        }
+
+    # --------------------------------------------------------
+    # Return document answer
+    # --------------------------------------------------------
+
+    return {
+
+        "success": True,
+
+        "message": (
+            "Answer generated from relevant "
+            "document passages."
+        ),
+
+        "answer": answer,
+
+        "filename": document[
+            "filename"
+        ],
+
+        "pages": referenced_pages,
+
+        "retrievedChunks": len(
+            retrieved_chunks
+        ),
+    }

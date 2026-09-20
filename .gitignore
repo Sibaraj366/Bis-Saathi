@@ -1,0 +1,77 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# Environment / secrets
+.env
+*.env
+backend/.env
+
+# Python virtual environments
+.venv/
+backend/.venv/
+
+# Python cache
+__pycache__/
+backend/__pycache__/
+
+# Local databases / user data
+*.db
+*.sqlite
+*.sqlite3
+backend/users.db
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VS Code
+.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+/build/
+
+# Flutter generated files
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio generated files
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Android local configuration
+android/local.properties
+
+# Local backup/setup archives
+BIS_Saathi_Global_Language_Update.zip
+lib_language_setup.zip
+
+# macOS
+.DS_Store

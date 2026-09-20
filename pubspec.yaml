@@ -1,0 +1,57 @@
+name: bis_saathi
+description: "A new Flutter project."
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none'
+
+# The following defines the version and build number for your application.
+# A version number is three numbers separated by dots, like 1.2.43
+# followed by an optional build number separated by a +.
+# Both the version number and build number can be overridden in flutter build
+# commands.
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Cupertino Icons
+  cupertino_icons: ^1.0.8
+
+  # Networking
+  http: ^1.6.0
+
+  # Markdown rendering
+  flutter_markdown: ^0.7.7+1
+
+  # Open external URLs
+  url_launcher: ^6.3.2
+
+  # File/document picker
+  file_picker: ^11.0.3
+
+  # Local storage
+  shared_preferences: ^2.5.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Flutter recommended lint rules
+  flutter_lints: ^5.0.0
+
+  # App launcher icon generator
+  flutter_launcher_icons: ^0.14.4
+
+# Flutter Launcher Icons configuration
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/app_icon.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true

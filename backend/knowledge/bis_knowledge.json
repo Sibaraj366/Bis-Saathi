@@ -1,0 +1,32 @@
+[
+  {
+    "topic": "About BIS",
+    "content": "The Bureau of Indian Standards (BIS) is India's National Standards Body. It works on standardization, marking and quality certification of goods and related activities.",
+    "source": "https://www.bis.gov.in/the-bureau/about-bis/?lang=en"
+  },
+  {
+    "topic": "Know Your Standards",
+    "content": "BIS's Know Your Standards portal allows users to search Indian Standards by IS number or keyword such as a product name. It provides access to information and documents related to a selected standard, including standards, amendments, gazette notifications, schemes of testing and inspection, licences and laboratories.",
+    "source": "https://www.bis.gov.in/know-your-standard/?lang=en"
+  },
+  {
+    "topic": "BIS Certification",
+    "content": "BIS product certification is generally voluntary, but for certain products the Central Government makes compliance with Indian Standards compulsory through Quality Control Orders (QCOs). For products covered by compulsory certification, the applicable BIS licence or Certificate of Conformity requirements must be followed.",
+    "source": "https://www.bis.gov.in/product-certification/products-under-compulsory-certification/?lang=en"
+  },
+  {
+    "topic": "BIS Product Certification Process",
+    "content": "BIS product certification includes conformity assessment requirements. Depending on the applicable scheme, BIS provides guidelines relating to grant of licence, product non-conformity, surveillance, renewal, retesting and other certification activities.",
+    "source": "https://www.bis.gov.in/product-certification/product-certification-process/?lang=en"
+  },
+  {
+    "topic": "When BIS Licence May Be Compulsory",
+    "content": "Whether a BIS licence is compulsory depends on whether the product is covered by the applicable compulsory certification requirements issued by the Central Government. Users should check the current official BIS list and applicable Quality Control Orders rather than assuming that every product requires mandatory BIS certification.",
+    "source": "https://www.bis.gov.in/product-certification/products-under-compulsory-certification/?lang=en"
+  },
+  {
+    "topic": "Applying for BIS Product Certification",
+    "content": "BIS states that manufacturers applying for a product certification licence need appropriate manufacturing infrastructure, process controls, quality control and testing capabilities for the product according to the relevant Indian Standard. Product conformity is assessed through the applicable BIS assessment and testing process.",
+    "source": "https://www.bis.gov.in/product-certification/product-certification-faq/?lang=en"
+  }
+]

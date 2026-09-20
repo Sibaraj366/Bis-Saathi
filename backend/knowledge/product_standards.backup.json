@@ -1,0 +1,110 @@
+[
+  {
+    "product": "PVC insulated electric cables",
+    "keywords": [
+      "electric cable",
+      "electrical cable",
+      "PVC cable",
+      "wire",
+      "cable"
+    ],
+    "is_number": "IS 694:2010",
+    "standard_title": "Polyvinyl chloride insulated unsheathed and sheathed cables/cords with rigid and flexible conductor for rated voltages up to and including 1 100 V",
+    "certification": "Mandatory Certification",
+    "information": "BIS lists IS 694:2010 for PVC insulated cables/cords with rigid and flexible conductors for rated voltages up to and including 1100 V. The BIS standard details identify this standard as Mandatory Certification.",
+    "compliance_checklist": [
+      "Confirm that the product falls within the scope of IS 694:2010.",
+      "Review the applicable Indian Standard requirements for the product.",
+      "Review the applicable BIS product manual and Scheme of Inspection and Testing.",
+      "Ensure appropriate manufacturing infrastructure, process controls, quality control and testing capabilities are available.",
+      "Check the applicable BIS certification and testing process before applying."
+    ],
+    "source": "https://services.bis.gov.in/php/BIS_2.0/bisconnect/ISL/is_details?IDS=MTM4Mjk%3D"
+  },
+  {
+    "product": "Heavy Duty PVC insulated electric cables",
+    "keywords": [
+      "heavy duty cable",
+      "heavy duty electric cable",
+      "PVC insulated heavy duty cable",
+      "IS 1554",
+      "cable"
+    ],
+    "is_number": "IS 1554 (Part 1):1988",
+    "standard_title": "Specification for PVC Insulated (Heavy Duty) Electric Cables Part 1 for Working Voltages up to and Including 1100 V",
+    "certification": "Compulsory Certification",
+    "information": "BIS lists IS 1554 (Part 1):1988 under the Cables Quality Control Order in its Scheme-I compulsory certification information.",
+    "compliance_checklist": [
+      "Confirm that the product falls within the scope of IS 1554 (Part 1):1988.",
+      "Review the applicable Indian Standard requirements for the product.",
+      "Review the applicable BIS product manual and Scheme of Inspection and Testing.",
+      "Ensure appropriate manufacturing infrastructure, process controls, quality control and testing capabilities are available.",
+      "Check the applicable BIS certification and testing process before applying."
+    ],
+    "source": "https://www.bis.gov.in/product-certification/products-under-compulsory-certification/scheme-i-mark-scheme/?lang=en"
+  },
+  {
+    "product": "Heavy Duty PVC insulated electric cables",
+    "keywords": [
+      "heavy duty cable",
+      "heavy duty electric cable",
+      "PVC insulated heavy duty cable",
+      "IS 1554",
+      "cable"
+    ],
+    "is_number": "IS 1554 (Part 2):1988",
+    "standard_title": "Specification for PVC Insulated (Heavy Duty) Electric Cables Part 2 for Working Voltages from 3.3 kV up to and Including 11 kV",
+    "certification": "Compulsory Certification",
+    "information": "BIS lists IS 1554 (Part 2):1988 under the Cables Quality Control Order in its Scheme-I compulsory certification information.",
+    "compliance_checklist": [
+      "Confirm that the product falls within the scope of IS 1554 (Part 2):1988.",
+      "Review the applicable Indian Standard requirements for the product.",
+      "Review the applicable BIS product manual and Scheme of Inspection and Testing.",
+      "Ensure appropriate manufacturing infrastructure, process controls, quality control and testing capabilities are available.",
+      "Check the applicable BIS certification and testing process before applying."
+    ],
+    "source": "https://www.bis.gov.in/product-certification/products-under-compulsory-certification/scheme-i-mark-scheme/?lang=en"
+  },
+  {
+    "product": "Cement",
+    "keywords": [
+      "cement",
+      "ordinary portland cement",
+      "OPC",
+      "PPC",
+      "portland pozzolana cement"
+    ],
+    "is_number": "IS 269:2015",
+    "standard_title": "Ordinary Portland Cement — Specification",
+    "certification": "Compulsory Certification",
+    "information": "IS 269:2015 is the Indian Standard specification for Ordinary Portland Cement. Cement products covered by applicable Quality Control Orders require conformity with the applicable Indian Standard and BIS certification requirements.",
+    "compliance_checklist": [
+      "Confirm that the product falls within the scope of IS 269:2015.",
+      "Review the applicable Indian Standard requirements for Ordinary Portland Cement.",
+      "Review the applicable BIS product manual and Scheme of Inspection and Testing.",
+      "Ensure appropriate manufacturing infrastructure, process controls, quality control and testing capabilities are available.",
+      "Check the applicable BIS certification and testing process before applying."
+    ],
+    "source": "https://www.bis.gov.in/product-certification/products-under-compulsory-certification/scheme-i-mark-scheme/?lang=en"
+  },
+  {
+    "product": "Cement",
+    "keywords": [
+      "cement",
+      "PPC",
+      "portland pozzolana cement"
+    ],
+    "is_number": "IS 1489 (Part 1):2015",
+    "standard_title": "Portland-Pozzolana Cement — Specification, Part 1: Fly Ash Based",
+    "certification": "Compulsory Certification",
+    "information": "IS 1489 (Part 1):2015 specifies Portland-Pozzolana Cement, fly ash based. The applicable BIS certification and regulatory requirements should be verified against the current BIS requirements for the specific cement product.",
+    "compliance_checklist": [
+      "Confirm that the product falls within the scope of IS 1489 (Part 1):2015.",
+      "Review the applicable Indian Standard requirements for Portland-Pozzolana Cement.",
+      "Review the applicable BIS product manual and Scheme of Inspection and Testing.",
+      "Ensure appropriate manufacturing infrastructure, process controls, quality control and testing capabilities are available.",
+      "Check the applicable BIS certification and testing process before applying."
+    ],
+    "source": "https://www.bis.gov.in/product-certification/products-under-compulsory-certification/scheme-i-mark-scheme/?lang=en"
+  }
+]
