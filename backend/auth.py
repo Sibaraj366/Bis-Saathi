@@ -1,18 +1,45 @@
 import os
-import sqlite3
 import hashlib
 import secrets
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+
+from dotenv import load_dotenv
+import psycopg
+from psycopg.rows import dict_row
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr
 
+
+# ============================================================
+# ENVIRONMENT
+# ============================================================
+
 BASE_DIR = Path(__file__).resolve().parent
-DATABASE_PATH = BASE_DIR / 'users.db'
+
+load_dotenv(BASE_DIR / '.env')
+
+
+DATABASE_URL = os.getenv(
+    'SUPABASE_DATABASE_URL',
+    ''
+).strip()
+
+
+if not DATABASE_URL:
+    raise RuntimeError(
+        'SUPABASE_DATABASE_URL is not configured.'
+    )
+
+
+# ============================================================
+# JWT / PASSWORD SETTINGS
+# ============================================================
 
 JWT_SECRET = os.getenv(
     'BIS_SAATHI_JWT_SECRET',
@@ -20,8 +47,32 @@ JWT_SECRET = os.getenv(
 )
 
 JWT_ALGORITHM = 'HS256'
+
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
+
 PASSWORD_ITERATIONS = 310000
+
+RESEND_API_KEY = os.getenv(
+    'RESEND_API_KEY',
+    ''
+).strip()
+
+RESEND_FROM_EMAIL = os.getenv(
+    'RESEND_FROM_EMAIL',
+    'onboarding@resend.dev'
+).strip()
+
+PASSWORD_RESET_MINUTES = int(
+    os.getenv(
+        'BIS_SAATHI_PASSWORD_RESET_MINUTES',
+        '10'
+    )
+)
+
+
+# ============================================================
+# ROUTER / SECURITY
+# ============================================================
 
 router = APIRouter(
     prefix='/api/auth',
@@ -31,98 +82,132 @@ router = APIRouter(
 security = HTTPBearer(auto_error=False)
 
 
+# ============================================================
+# POSTGRESQL CONNECTION
+# ============================================================
+
 def get_connection():
-    connection = sqlite3.connect(
-        DATABASE_PATH,
-        check_same_thread=False
+    connection = psycopg.connect(
+        DATABASE_URL,
+        connect_timeout=10,
+        row_factory=dict_row
     )
-    connection.row_factory = sqlite3.Row
-    connection.execute('PRAGMA foreign_keys = ON')
+
     return connection
 
+
+# ============================================================
+# DATABASE INITIALIZATION
+# ============================================================
 
 def init_database():
     connection = get_connection()
 
-    connection.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            full_name TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            password_salt TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user',
-            preferred_language TEXT NOT NULL DEFAULT 'English',
-            is_active INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL,
-            last_login TEXT
-        )
-    """)
+    try:
+        with connection.cursor() as cursor:
 
-    connection.execute("""
-        CREATE TABLE IF NOT EXISTS user_activity (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            activity_type TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (user_id)
-                REFERENCES users(id)
-                ON DELETE CASCADE
-        )
-    """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id BIGSERIAL PRIMARY KEY,
+                    full_name TEXT NOT NULL,
+                    email TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    password_salt TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'user',
+                    preferred_language TEXT NOT NULL DEFAULT 'English',
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TEXT NOT NULL,
+                    last_login TEXT
+                )
+            """)
 
-    connection.execute("""
-        CREATE TABLE IF NOT EXISTS conversations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            title TEXT NOT NULL DEFAULT 'New Conversation',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY (user_id)
-                REFERENCES users(id)
-                ON DELETE CASCADE
-        )
-    """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_activity (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    activity_type TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id)
+                        REFERENCES users(id)
+                        ON DELETE CASCADE
+                )
+            """)
 
-    connection.execute("""
-        CREATE TABLE IF NOT EXISTS conversation_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            conversation_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            question TEXT NOT NULL,
-            answer TEXT NOT NULL,
-            sources_json TEXT NOT NULL DEFAULT '[]',
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (conversation_id)
-                REFERENCES conversations(id)
-                ON DELETE CASCADE,
-            FOREIGN KEY (user_id)
-                REFERENCES users(id)
-                ON DELETE CASCADE
-        )
-    """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    title TEXT NOT NULL DEFAULT 'New Conversation',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id)
+                        REFERENCES users(id)
+                        ON DELETE CASCADE
+                )
+            """)
 
-    connection.execute("""
-        CREATE INDEX IF NOT EXISTS idx_conversations_user
-        ON conversations(user_id)
-    """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_messages (
+                    id BIGSERIAL PRIMARY KEY,
+                    conversation_id BIGINT NOT NULL,
+                    user_id BIGINT NOT NULL,
+                    question TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    sources_json TEXT NOT NULL DEFAULT '[]',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (conversation_id)
+                        REFERENCES conversations(id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (user_id)
+                        REFERENCES users(id)
+                        ON DELETE CASCADE
+                )
+            """)
 
-    connection.execute("""
-        CREATE INDEX IF NOT EXISTS idx_messages_conversation
-        ON conversation_messages(conversation_id)
-    """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    code_hash TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    used BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
 
-    connection.execute("""
-        CREATE INDEX IF NOT EXISTS idx_messages_user
-        ON conversation_messages(user_id)
-    """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_password_reset_user
+                ON password_reset_tokens(user_id)
+            """)
 
-    connection.commit()
-    connection.close()
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_conversations_user
+                ON conversations(user_id)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_messages_conversation
+                ON conversation_messages(conversation_id)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_messages_user
+                ON conversation_messages(user_id)
+            """)
+
+        connection.commit()
+
+    finally:
+        connection.close()
 
 
 init_database()
 
+
+# ============================================================
+# PASSWORD FUNCTIONS
+# ============================================================
 
 def hash_password(
     password: str,
@@ -159,6 +244,106 @@ def verify_password(
     )
 
 
+# ============================================================
+# PASSWORD RESET EMAIL
+# ============================================================
+
+def _send_password_reset_email(
+    email: str,
+    full_name: str,
+    code: str
+):
+    if not RESEND_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                'Password reset email service is not configured. '
+                'Please configure RESEND_API_KEY.'
+            )
+        )
+
+    payload = {
+        'from': RESEND_FROM_EMAIL,
+        'to': [email],
+        'subject': 'BIS Saathi Password Reset Code',
+        'text': f"""Hello {full_name},
+
+Your BIS Saathi password reset code is:
+
+{code}
+
+This code expires in {PASSWORD_RESET_MINUTES} minutes.
+
+If you did not request a password reset, you can safely ignore this email.
+
+BIS Saathi
+"""
+    }
+
+    try:
+        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError
+
+        request = Request(
+            'https://api.resend.com/emails',
+            data=json.dumps(payload).encode('utf-8'),
+            headers={
+                'Authorization': f'Bearer {RESEND_API_KEY}',
+                'Content-Type': 'application/json'
+            },
+            method='POST'
+        )
+
+        with urlopen(request, timeout=15) as response:
+            response.read()
+
+            if response.status < 200 or response.status >= 300:
+                raise RuntimeError(
+                    f'Resend returned HTTP {response.status}'
+                )
+
+    except HTTPError as exc:
+        try:
+            error_body = exc.read().decode(
+                'utf-8',
+                errors='replace'
+            )
+        except Exception:
+            error_body = ''
+
+        print(
+            'Resend email error:',
+            exc.code,
+            error_body
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                'Unable to send the password reset email '
+                'right now. Please try again later.'
+            )
+        )
+
+    except Exception as exc:
+        print(
+            'Password reset email error:',
+            repr(exc)
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                'Unable to send the password reset email '
+                'right now. Please try again later.'
+            )
+        )
+
+
+# ============================================================
+# JWT
+# ============================================================
+
 def create_access_token(
     user_id: int,
     role: str
@@ -182,6 +367,10 @@ def create_access_token(
         algorithm=JWT_ALGORITHM
     )
 
+
+# ============================================================
+# CURRENT USER
+# ============================================================
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(
@@ -225,21 +414,28 @@ def get_current_user(
 
     connection = get_connection()
 
-    user = connection.execute("""
-        SELECT
-            id,
-            full_name,
-            email,
-            role,
-            preferred_language,
-            is_active,
-            created_at,
-            last_login
-        FROM users
-        WHERE id=?
-    """, (user_id_int,)).fetchone()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    id,
+                    full_name,
+                    email,
+                    password_hash,
+                    password_salt,
+                    role,
+                    preferred_language,
+                    is_active,
+                    created_at,
+                    last_login
+                FROM users
+                WHERE id=%s
+            """, (user_id_int,))
 
-    connection.close()
+            user = cursor.fetchone()
+
+    finally:
+        connection.close()
 
     if user is None:
         raise HTTPException(
@@ -253,7 +449,7 @@ def get_current_user(
             detail='This user account is inactive.'
         )
 
-    return dict(user)
+    return user
 
 
 def get_current_admin(
@@ -267,6 +463,10 @@ def get_current_admin(
 
     return current_user
 
+
+# ============================================================
+# ACTIVITY
+# ============================================================
 
 ALLOWED_ACTIVITY_TYPES = {
     'chat',
@@ -287,21 +487,25 @@ def record_activity(
 
     connection = get_connection()
 
-    connection.execute("""
-        INSERT INTO user_activity (
-            user_id,
-            activity_type,
-            created_at
-        )
-        VALUES (?, ?, ?)
-    """, (
-        user_id,
-        activity_type,
-        datetime.now(timezone.utc).isoformat()
-    ))
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO user_activity (
+                    user_id,
+                    activity_type,
+                    created_at
+                )
+                VALUES (%s, %s, %s)
+            """, (
+                user_id,
+                activity_type,
+                datetime.now(timezone.utc).isoformat()
+            ))
 
-    connection.commit()
-    connection.close()
+        connection.commit()
+
+    finally:
+        connection.close()
 
     return True
 
@@ -311,16 +515,21 @@ def get_activity_summary(
 ):
     connection = get_connection()
 
-    rows = connection.execute("""
-        SELECT
-            activity_type,
-            COUNT(*) AS total
-        FROM user_activity
-        WHERE user_id=?
-        GROUP BY activity_type
-    """, (user_id,)).fetchall()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    activity_type,
+                    COUNT(*) AS total
+                FROM user_activity
+                WHERE user_id=%s
+                GROUP BY activity_type
+            """, (user_id,))
 
-    connection.close()
+            rows = cursor.fetchall()
+
+    finally:
+        connection.close()
 
     counts = {
         'chat': 0,
@@ -343,44 +552,55 @@ def get_activity_summary(
 def get_admin_dashboard_stats():
     connection = get_connection()
 
-    total_users = connection.execute("""
-        SELECT COUNT(*)
-        FROM users
-    """).fetchone()[0]
+    try:
+        with connection.cursor() as cursor:
 
-    active_users = connection.execute("""
-        SELECT COUNT(*)
-        FROM users
-        WHERE is_active=1
-    """).fetchone()[0]
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM users
+            """)
+            total_users = cursor.fetchone()['count']
 
-    inactive_users = connection.execute("""
-        SELECT COUNT(*)
-        FROM users
-        WHERE is_active=0
-    """).fetchone()[0]
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM users
+                WHERE is_active=TRUE
+            """)
+            active_users = cursor.fetchone()['count']
 
-    admin_users = connection.execute("""
-        SELECT COUNT(*)
-        FROM users
-        WHERE role='admin'
-    """).fetchone()[0]
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM users
+                WHERE is_active=FALSE
+            """)
+            inactive_users = cursor.fetchone()['count']
 
-    normal_users = connection.execute("""
-        SELECT COUNT(*)
-        FROM users
-        WHERE role='user'
-    """).fetchone()[0]
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM users
+                WHERE role='admin'
+            """)
+            admin_users = cursor.fetchone()['count']
 
-    activity_rows = connection.execute("""
-        SELECT
-            activity_type,
-            COUNT(*) AS total
-        FROM user_activity
-        GROUP BY activity_type
-    """).fetchall()
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM users
+                WHERE role='user'
+            """)
+            normal_users = cursor.fetchone()['count']
 
-    connection.close()
+            cursor.execute("""
+                SELECT
+                    activity_type,
+                    COUNT(*) AS total
+                FROM user_activity
+                GROUP BY activity_type
+            """)
+
+            activity_rows = cursor.fetchall()
+
+    finally:
+        connection.close()
 
     activity = {
         'chat': 0,
@@ -421,18 +641,23 @@ def get_user_activity_details(
 ):
     connection = get_connection()
 
-    rows = connection.execute("""
-        SELECT
-            id,
-            activity_type,
-            created_at
-        FROM user_activity
-        WHERE user_id=?
-        ORDER BY id DESC
-        LIMIT 100
-    """, (user_id,)).fetchall()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    id,
+                    activity_type,
+                    created_at
+                FROM user_activity
+                WHERE user_id=%s
+                ORDER BY id DESC
+                LIMIT 100
+            """, (user_id,))
 
-    connection.close()
+            rows = cursor.fetchall()
+
+    finally:
+        connection.close()
 
     activities = []
 
@@ -446,6 +671,10 @@ def get_user_activity_details(
     return activities
 
 
+# ============================================================
+# REQUEST MODELS
+# ============================================================
+
 class RegisterRequest(BaseModel):
     full_name: str
     email: EmailStr
@@ -456,6 +685,21 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
 
 
 class ActivityRequest(BaseModel):
@@ -484,6 +728,10 @@ class ConversationMessageRequest(BaseModel):
     answer: str
     sources: list[str] = []
 
+
+# ============================================================
+# REGISTER
+# ============================================================
 
 @router.post('/register')
 def register(
@@ -516,22 +764,6 @@ def register(
     if preferred_language not in allowed_languages:
         preferred_language = 'English'
 
-    connection = get_connection()
-
-    existing_user = connection.execute("""
-        SELECT id
-        FROM users
-        WHERE email=?
-    """, (email,)).fetchone()
-
-    if existing_user is not None:
-        connection.close()
-
-        raise HTTPException(
-            status_code=409,
-            detail='An account with this email already exists.'
-        )
-
     password_hash, password_salt = hash_password(
         password
     )
@@ -540,34 +772,58 @@ def register(
         timezone.utc
     ).isoformat()
 
-    cursor = connection.execute("""
-        INSERT INTO users (
-            full_name,
-            email,
-            password_hash,
-            password_salt,
-            role,
-            preferred_language,
-            is_active,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        full_name,
-        email,
-        password_hash,
-        password_salt,
-        'user',
-        preferred_language,
-        1,
-        created_at
-    ))
+    connection = get_connection()
 
-    connection.commit()
+    try:
+        with connection.cursor() as cursor:
 
-    user_id = cursor.lastrowid
+            cursor.execute("""
+                SELECT id
+                FROM users
+                WHERE email=%s
+            """, (email,))
 
-    connection.close()
+            existing_user = cursor.fetchone()
+
+            if existing_user is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail='An account with this email already exists.'
+                )
+
+            cursor.execute("""
+                INSERT INTO users (
+                    full_name,
+                    email,
+                    password_hash,
+                    password_salt,
+                    role,
+                    preferred_language,
+                    is_active,
+                    created_at
+                )
+                VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s
+                )
+                RETURNING id
+            """, (
+                full_name,
+                email,
+                password_hash,
+                password_salt,
+                'user',
+                preferred_language,
+                True,
+                created_at
+            ))
+
+            user_id = cursor.fetchone()['id']
+
+        connection.commit()
+
+    finally:
+        connection.close()
 
     token = create_access_token(
         user_id,
@@ -588,6 +844,10 @@ def register(
     }
 
 
+# ============================================================
+# LOGIN
+# ============================================================
+
 @router.post('/login')
 def login(
     request: LoginRequest
@@ -598,57 +858,57 @@ def login(
 
     connection = get_connection()
 
-    user = connection.execute("""
-        SELECT *
-        FROM users
-        WHERE email=?
-    """, (email,)).fetchone()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT *
+                FROM users
+                WHERE email=%s
+            """, (email,))
 
-    if user is None:
+            user = cursor.fetchone()
+
+            if user is None:
+                raise HTTPException(
+                    status_code=401,
+                    detail='Invalid email or password.'
+                )
+
+            if not user['is_active']:
+                raise HTTPException(
+                    status_code=403,
+                    detail='This account is inactive.'
+                )
+
+            valid_password = verify_password(
+                request.password,
+                user['password_hash'],
+                user['password_salt']
+            )
+
+            if not valid_password:
+                raise HTTPException(
+                    status_code=401,
+                    detail='Invalid email or password.'
+                )
+
+            last_login = datetime.now(
+                timezone.utc
+            ).isoformat()
+
+            cursor.execute("""
+                UPDATE users
+                SET last_login=%s
+                WHERE id=%s
+            """, (
+                last_login,
+                user['id']
+            ))
+
+        connection.commit()
+
+    finally:
         connection.close()
-
-        raise HTTPException(
-            status_code=401,
-            detail='Invalid email or password.'
-        )
-
-    if not user['is_active']:
-        connection.close()
-
-        raise HTTPException(
-            status_code=403,
-            detail='This account is inactive.'
-        )
-
-    valid_password = verify_password(
-        request.password,
-        user['password_hash'],
-        user['password_salt']
-    )
-
-    if not valid_password:
-        connection.close()
-
-        raise HTTPException(
-            status_code=401,
-            detail='Invalid email or password.'
-        )
-
-    last_login = datetime.now(
-        timezone.utc
-    ).isoformat()
-
-    connection.execute("""
-        UPDATE users
-        SET last_login=?
-        WHERE id=?
-    """, (
-        last_login,
-        user['id']
-    ))
-
-    connection.commit()
-    connection.close()
 
     token = create_access_token(
         user['id'],
@@ -668,6 +928,103 @@ def login(
         }
     }
 
+
+# ============================================================
+# CHANGE PASSWORD
+# ============================================================
+
+@router.post('/change-password')
+def change_password(request: ChangePasswordRequest, current_user=Depends(get_current_user)):
+    if len(request.new_password) < 8:
+        raise HTTPException(status_code=400, detail='New password must contain at least 8 characters.')
+    if request.current_password == request.new_password:
+        raise HTTPException(status_code=400, detail='New password must be different from your current password.')
+    if not verify_password(request.current_password, current_user['password_hash'], current_user['password_salt']):
+        raise HTTPException(status_code=401, detail='Current password is incorrect.')
+    password_hash, password_salt = hash_password(request.new_password)
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE users SET password_hash=%s, password_salt=%s WHERE id=%s", (password_hash, password_salt, current_user['id']))
+        connection.commit()
+    finally:
+        connection.close()
+    return {'success': True, 'message': 'Password changed successfully.'}
+
+
+# ============================================================
+# FORGOT PASSWORD
+# ============================================================
+
+@router.post('/forgot-password')
+def forgot_password(request: ForgotPasswordRequest):
+    email = str(request.email).strip().lower()
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id, full_name, email, is_active FROM users WHERE email=%s", (email,))
+            user = cursor.fetchone()
+            if user is not None:
+                cursor.execute("UPDATE password_reset_tokens SET used=TRUE WHERE user_id=%s AND used=FALSE", (user['id'],))
+        connection.commit()
+    finally:
+        connection.close()
+    if user is None or not user['is_active']:
+        return {'success': True, 'message': 'If an active account exists for this email, a reset code has been sent.'}
+    code = f'{secrets.randbelow(1000000):06d}'
+    code_hash = hashlib.sha256(code.encode('utf-8')).hexdigest()
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=PASSWORD_RESET_MINUTES)
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("INSERT INTO password_reset_tokens (user_id, code_hash, expires_at, used, created_at) VALUES (%s, %s, %s, FALSE, %s)", (user['id'], code_hash, expires_at.isoformat(), now.isoformat()))
+        connection.commit()
+    finally:
+        connection.close()
+    _send_password_reset_email(user['email'], user['full_name'], code)
+    return {'success': True, 'message': 'If an active account exists for this email, a reset code has been sent.'}
+
+
+# ============================================================
+# RESET PASSWORD
+# ============================================================
+
+@router.post('/reset-password')
+def reset_password(request: ResetPasswordRequest):
+    email = str(request.email).strip().lower()
+    code = request.code.strip()
+    if len(request.new_password) < 8:
+        raise HTTPException(status_code=400, detail='New password must contain at least 8 characters.')
+    if len(code) != 6 or not code.isdigit():
+        raise HTTPException(status_code=400, detail='Please enter the valid 6-digit verification code.')
+    code_hash = hashlib.sha256(code.encode('utf-8')).hexdigest()
+    now = datetime.now(timezone.utc)
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT r.id, r.user_id, r.code_hash, r.expires_at, r.used FROM password_reset_tokens r JOIN users u ON u.id=r.user_id WHERE u.email=%s ORDER BY r.id DESC LIMIT 1", (email,))
+            record = cursor.fetchone()
+            if record is None or record['used']:
+                raise HTTPException(status_code=400, detail='Invalid or expired password reset code.')
+            try:
+                expires_at = datetime.fromisoformat(record['expires_at'])
+            except Exception:
+                expires_at = now - timedelta(seconds=1)
+            if expires_at <= now or not secrets.compare_digest(code_hash, record['code_hash']):
+                raise HTTPException(status_code=400, detail='Invalid or expired password reset code.')
+            password_hash, password_salt = hash_password(request.new_password)
+            cursor.execute("UPDATE users SET password_hash=%s, password_salt=%s WHERE id=%s", (password_hash, password_salt, record['user_id']))
+            cursor.execute("UPDATE password_reset_tokens SET used=TRUE WHERE id=%s", (record['id'],))
+        connection.commit()
+    finally:
+        connection.close()
+    return {'success': True, 'message': 'Password reset successfully.'}
+
+
+# ============================================================
+# ADMIN RECOVERY
+# ============================================================
 
 @router.post('/admin/recover')
 def recover_admin_account(
@@ -719,9 +1076,7 @@ def recover_admin_account(
         'Marathi'
     }
 
-    preferred_language = (
-        request.preferred_language
-    )
+    preferred_language = request.preferred_language
 
     if preferred_language not in allowed_languages:
         preferred_language = 'English'
@@ -736,76 +1091,87 @@ def recover_admin_account(
 
     connection = get_connection()
 
-    # Make the recovery email the only administrator.
-    connection.execute(
-        "UPDATE users SET role='user' "
-        "WHERE role='admin' AND email<>?",
-        (email,)
-    )
+    try:
+        with connection.cursor() as cursor:
 
-    existing_user = connection.execute("""
-        SELECT id
-        FROM users
-        WHERE email=?
-    """, (email,)).fetchone()
+            cursor.execute("""
+                UPDATE users
+                SET role='user'
+                WHERE role='admin'
+                AND email<>%s
+            """, (email,))
 
-    if existing_user is not None:
-        connection.execute("""
-            UPDATE users
-            SET
-                full_name=?,
-                password_hash=?,
-                password_salt=?,
-                role='admin',
-                preferred_language=?,
-                is_active=1
-            WHERE id=?
-        """, (
-            full_name,
-            password_hash,
-            password_salt,
-            preferred_language,
-            existing_user['id']
-        ))
+            cursor.execute("""
+                SELECT id
+                FROM users
+                WHERE email=%s
+            """, (email,))
 
-        user_id = existing_user['id']
+            existing_user = cursor.fetchone()
 
-        message = (
-            'Administrator account recovered successfully.'
-        )
+            if existing_user is not None:
 
-    else:
-        cursor = connection.execute("""
-            INSERT INTO users (
-                full_name,
-                email,
-                password_hash,
-                password_salt,
-                role,
-                preferred_language,
-                is_active,
-                created_at
-            )
-            VALUES (
-                ?, ?, ?, ?, 'admin', ?, 1, ?
-            )
-        """, (
-            full_name,
-            email,
-            password_hash,
-            password_salt,
-            preferred_language,
-            now
-        ))
+                cursor.execute("""
+                    UPDATE users
+                    SET
+                        full_name=%s,
+                        password_hash=%s,
+                        password_salt=%s,
+                        role='admin',
+                        preferred_language=%s,
+                        is_active=TRUE
+                    WHERE id=%s
+                """, (
+                    full_name,
+                    password_hash,
+                    password_salt,
+                    preferred_language,
+                    existing_user['id']
+                ))
 
-        user_id = cursor.lastrowid
+                user_id = existing_user['id']
 
-        message = (
-            'Administrator account created successfully.'
-        )
+                message = (
+                    'Administrator account recovered successfully.'
+                )
 
-    connection.commit()
-    connection.close()
+            else:
+
+                cursor.execute("""
+                    INSERT INTO users (
+                        full_name,
+                        email,
+                        password_hash,
+                        password_salt,
+                        role,
+                        preferred_language,
+                        is_active,
+                        created_at
+                    )
+                    VALUES (
+                        %s, %s, %s, %s,
+                        'admin', %s, TRUE, %s
+                    )
+                    RETURNING id
+                """, (
+                    full_name,
+                    email,
+                    password_hash,
+                    password_salt,
+                    preferred_language,
+                    now
+                ))
+
+                user_id = cursor.fetchone()['id']
+
+                message = (
+                    'Administrator account created successfully.'
+                )
+
+        connection.commit()
+
+    finally:
+        connection.close()
 
     return {
         'success': True,
@@ -821,6 +1187,10 @@ def recover_admin_account(
     }
 
 
+# ============================================================
+# ME
+# ============================================================
+
 @router.get('/me')
 def me(
     current_user=Depends(get_current_user)
@@ -832,9 +1202,7 @@ def me(
             'fullName': current_user['full_name'],
             'email': current_user['email'],
             'role': current_user['role'],
-            'preferredLanguage': current_user[
-                'preferred_language'
-            ],
+            'preferredLanguage': current_user['preferred_language'],
             'isActive': bool(
                 current_user['is_active']
             ),
@@ -843,6 +1211,10 @@ def me(
         }
     }
 
+
+# ============================================================
+# USER ACTIVITY
+# ============================================================
 
 @router.get('/activity')
 def activity(
@@ -857,22 +1229,14 @@ def activity(
         'activity': {
             'aiQuestions': counts['chat'],
             'standardsViewed': counts['standard_view'],
-            'complianceChecks': counts[
-                'compliance_check'
-            ],
+            'complianceChecks': counts['compliance_check'],
             'documents': (
                 counts['document_upload']
                 + counts['document_question']
             ),
-            'documentUploads': counts[
-                'document_upload'
-            ],
-            'documentQuestions': counts[
-                'document_question'
-            ],
-            'servicesViewed': counts[
-                'service_view'
-            ]
+            'documentUploads': counts['document_upload'],
+            'documentQuestions': counts['document_question'],
+            'servicesViewed': counts['service_view']
         }
     }
 
@@ -904,6 +1268,10 @@ def create_activity(
     }
 
 
+# ============================================================
+# CONVERSATIONS
+# ============================================================
+
 def create_conversation_for_user(
     user_id: int,
     title: str = 'New Conversation'
@@ -922,25 +1290,30 @@ def create_conversation_for_user(
 
     connection = get_connection()
 
-    cursor = connection.execute("""
-        INSERT INTO conversations (
-            user_id,
-            title,
-            created_at,
-            updated_at
-        )
-        VALUES (?, ?, ?, ?)
-    """, (
-        user_id,
-        clean_title,
-        now,
-        now
-    ))
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO conversations (
+                    user_id,
+                    title,
+                    created_at,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+            """, (
+                user_id,
+                clean_title,
+                now,
+                now
+            ))
 
-    conversation_id = cursor.lastrowid
+            conversation_id = cursor.fetchone()['id']
 
-    connection.commit()
-    connection.close()
+        connection.commit()
+
+    finally:
+        connection.close()
 
     return {
         'id': conversation_id,
@@ -957,22 +1330,27 @@ def get_user_conversation(
 ):
     connection = get_connection()
 
-    conversation = connection.execute("""
-        SELECT
-            id,
-            user_id,
-            title,
-            created_at,
-            updated_at
-        FROM conversations
-        WHERE id=?
-        AND user_id=?
-    """, (
-        conversation_id,
-        user_id
-    )).fetchone()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    id,
+                    user_id,
+                    title,
+                    created_at,
+                    updated_at
+                FROM conversations
+                WHERE id=%s
+                AND user_id=%s
+            """, (
+                conversation_id,
+                user_id
+            ))
 
-    connection.close()
+            conversation = cursor.fetchone()
+
+    finally:
+        connection.close()
 
     return conversation
 
@@ -983,28 +1361,33 @@ def list_conversations(
 ):
     connection = get_connection()
 
-    rows = connection.execute("""
-        SELECT
-            c.id,
-            c.title,
-            c.created_at,
-            c.updated_at,
-            COUNT(m.id) AS message_count
-        FROM conversations c
-        LEFT JOIN conversation_messages m
-            ON m.conversation_id=c.id
-        WHERE c.user_id=?
-        GROUP BY
-            c.id,
-            c.title,
-            c.created_at,
-            c.updated_at
-        ORDER BY c.updated_at DESC
-    """, (
-        current_user['id'],
-    )).fetchall()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    c.id,
+                    c.title,
+                    c.created_at,
+                    c.updated_at,
+                    COUNT(m.id) AS message_count
+                FROM conversations c
+                LEFT JOIN conversation_messages m
+                    ON m.conversation_id=c.id
+                WHERE c.user_id=%s
+                GROUP BY
+                    c.id,
+                    c.title,
+                    c.created_at,
+                    c.updated_at
+                ORDER BY c.updated_at DESC
+            """, (
+                current_user['id'],
+            ))
 
-    connection.close()
+            rows = cursor.fetchall()
+
+    finally:
+        connection.close()
 
     conversations = []
 
@@ -1059,23 +1442,28 @@ def get_conversation(
 
     connection = get_connection()
 
-    rows = connection.execute("""
-        SELECT
-            id,
-            question,
-            answer,
-            sources_json,
-            created_at
-        FROM conversation_messages
-        WHERE conversation_id=?
-        AND user_id=?
-        ORDER BY id ASC
-    """, (
-        conversation_id,
-        current_user['id']
-    )).fetchall()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    id,
+                    question,
+                    answer,
+                    sources_json,
+                    created_at
+                FROM conversation_messages
+                WHERE conversation_id=%s
+                AND user_id=%s
+                ORDER BY id ASC
+            """, (
+                conversation_id,
+                current_user['id']
+            ))
 
-    connection.close()
+            rows = cursor.fetchall()
+
+    finally:
+        connection.close()
 
     messages = []
 
@@ -1163,73 +1551,82 @@ def save_conversation_message(
 
     connection = get_connection()
 
-    connection.execute("""
-        INSERT INTO conversation_messages (
-            conversation_id,
-            user_id,
-            question,
-            answer,
-            sources_json,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (
-        conversation_id,
-        current_user['id'],
-        question,
-        answer,
-        json.dumps(
-            sources,
-            ensure_ascii=False
-        ),
-        now
-    ))
+    try:
+        with connection.cursor() as cursor:
 
-    message_count = connection.execute("""
-        SELECT COUNT(*)
-        FROM conversation_messages
-        WHERE conversation_id=?
-    """, (
-        conversation_id,
-    )).fetchone()[0]
+            cursor.execute("""
+                INSERT INTO conversation_messages (
+                    conversation_id,
+                    user_id,
+                    question,
+                    answer,
+                    sources_json,
+                    created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                conversation_id,
+                current_user['id'],
+                question,
+                answer,
+                json.dumps(
+                    sources,
+                    ensure_ascii=False
+                ),
+                now
+            ))
 
-    if message_count == 1:
-        title = question
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM conversation_messages
+                WHERE conversation_id=%s
+            """, (
+                conversation_id,
+            ))
 
-        if len(title) > 80:
-            title = (
-                title[:80].rstrip()
-                + '...'
-            )
+            message_count = cursor.fetchone()['count']
 
-        connection.execute("""
-            UPDATE conversations
-            SET
-                title=?,
-                updated_at=?
-            WHERE id=?
-            AND user_id=?
-        """, (
-            title,
-            now,
-            conversation_id,
-            current_user['id']
-        ))
+            if message_count == 1:
 
-    else:
-        connection.execute("""
-            UPDATE conversations
-            SET updated_at=?
-            WHERE id=?
-            AND user_id=?
-        """, (
-            now,
-            conversation_id,
-            current_user['id']
-        ))
+                title = question
 
-    connection.commit()
-    connection.close()
+                if len(title) > 80:
+                    title = (
+                        title[:80].rstrip()
+                        + '...'
+                    )
+
+                cursor.execute("""
+                    UPDATE conversations
+                    SET
+                        title=%s,
+                        updated_at=%s
+                    WHERE id=%s
+                    AND user_id=%s
+                """, (
+                    title,
+                    now,
+                    conversation_id,
+                    current_user['id']
+                ))
+
+            else:
+
+                cursor.execute("""
+                    UPDATE conversations
+                    SET updated_at=%s
+                    WHERE id=%s
+                    AND user_id=%s
+                """, (
+                    now,
+                    conversation_id,
+                    current_user['id']
+                ))
+
+        connection.commit()
+
+    finally:
+        connection.close()
 
     return {
         'success': True,
@@ -1259,23 +1656,31 @@ def delete_conversation(
 
     connection = get_connection()
 
-    connection.execute("""
-        DELETE FROM conversations
-        WHERE id=?
-        AND user_id=?
-    """, (
-        conversation_id,
-        current_user['id']
-    ))
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM conversations
+                WHERE id=%s
+                AND user_id=%s
+            """, (
+                conversation_id,
+                current_user['id']
+            ))
 
-    connection.commit()
-    connection.close()
+        connection.commit()
+
+    finally:
+        connection.close()
 
     return {
         'success': True,
         'message': 'Conversation deleted.'
     }
 
+
+# ============================================================
+# ADMIN DASHBOARD
+# ============================================================
 
 @router.get('/admin/dashboard')
 def admin_dashboard(
@@ -1293,6 +1698,10 @@ def admin_dashboard(
         'stats': stats
     }
 
+
+# ============================================================
+# ADMIN USERS
+# ============================================================
 
 @router.get('/admin/users')
 def admin_users(
@@ -1314,98 +1723,107 @@ def admin_users(
 
     connection = get_connection()
 
-    conditions = []
-    parameters = []
+    try:
+        with connection.cursor() as cursor:
 
-    if search.strip():
-        search_value = (
-            f'%{search.strip()}%'
-        )
+            conditions = []
+            parameters = []
 
-        conditions.append("""
-            (
-                full_name LIKE ?
-                OR email LIKE ?
+            if search.strip():
+                search_value = (
+                    f'%{search.strip()}%'
+                )
+
+                conditions.append("""
+                    (
+                        full_name ILIKE %s
+                        OR email ILIKE %s
+                    )
+                """)
+
+                parameters.extend([
+                    search_value,
+                    search_value
+                ])
+
+            if role.strip():
+
+                normalized_role = (
+                    role.strip().lower()
+                )
+
+                if normalized_role not in {
+                    'user',
+                    'admin'
+                }:
+                    raise HTTPException(
+                        status_code=400,
+                        detail='Role must be user or admin.'
+                    )
+
+                conditions.append(
+                    'role=%s'
+                )
+
+                parameters.append(
+                    normalized_role
+                )
+
+            if is_active is not None:
+                conditions.append(
+                    'is_active=%s'
+                )
+
+                parameters.append(
+                    is_active
+                )
+
+            where_clause = ''
+
+            if conditions:
+                where_clause = (
+                    'WHERE '
+                    + ' AND '.join(conditions)
+                )
+
+            cursor.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM users
+                {where_clause}
+                """,
+                parameters
             )
-        """)
 
-        parameters.extend([
-            search_value,
-            search_value
-        ])
+            total = cursor.fetchone()['count']
 
-    if role.strip():
-        normalized_role = (
-            role.strip().lower()
-        )
-
-        if normalized_role not in {
-            'user',
-            'admin'
-        }:
-            connection.close()
-
-            raise HTTPException(
-                status_code=400,
-                detail='Role must be user or admin.'
+            cursor.execute(
+                f"""
+                SELECT
+                    id,
+                    full_name,
+                    email,
+                    role,
+                    preferred_language,
+                    is_active,
+                    created_at,
+                    last_login
+                FROM users
+                {where_clause}
+                ORDER BY id DESC
+                LIMIT %s
+                OFFSET %s
+                """,
+                parameters + [
+                    limit,
+                    offset
+                ]
             )
 
-        conditions.append(
-            'role=?'
-        )
+            rows = cursor.fetchall()
 
-        parameters.append(
-            normalized_role
-        )
-
-    if is_active is not None:
-        conditions.append(
-            'is_active=?'
-        )
-
-        parameters.append(
-            1 if is_active else 0
-        )
-
-    where_clause = ''
-
-    if conditions:
-        where_clause = (
-            'WHERE '
-            + ' AND '.join(conditions)
-        )
-
-    total = connection.execute(
-        f"""
-        SELECT COUNT(*)
-        FROM users
-        {where_clause}
-        """,
-        parameters
-    ).fetchone()[0]
-
-    rows = connection.execute(
-        f"""
-        SELECT
-            id,
-            full_name,
-            email,
-            role,
-            preferred_language,
-            is_active,
-            created_at,
-            last_login
-        FROM users
-        {where_clause}
-        ORDER BY id DESC
-        LIMIT ?
-        OFFSET ?
-        """,
-        parameters + [
-            limit,
-            offset
-        ]
-    ).fetchall()
+    finally:
+        connection.close()
 
     users = []
 
@@ -1415,17 +1833,13 @@ def admin_users(
             'fullName': row['full_name'],
             'email': row['email'],
             'role': row['role'],
-            'preferredLanguage': row[
-                'preferred_language'
-            ],
+            'preferredLanguage': row['preferred_language'],
             'isActive': bool(
                 row['is_active']
             ),
             'createdAt': row['created_at'],
             'lastLogin': row['last_login']
         })
-
-    connection.close()
 
     return {
         'success': True,
@@ -1436,6 +1850,10 @@ def admin_users(
     }
 
 
+# ============================================================
+# ADMIN USER DETAILS
+# ============================================================
+
 @router.get(
     '/admin/users/{user_id}'
 )
@@ -1445,23 +1863,28 @@ def admin_user_details(
 ):
     connection = get_connection()
 
-    user = connection.execute("""
-        SELECT
-            id,
-            full_name,
-            email,
-            role,
-            preferred_language,
-            is_active,
-            created_at,
-            last_login
-        FROM users
-        WHERE id=?
-    """, (
-        user_id,
-    )).fetchone()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    id,
+                    full_name,
+                    email,
+                    role,
+                    preferred_language,
+                    is_active,
+                    created_at,
+                    last_login
+                FROM users
+                WHERE id=%s
+            """, (
+                user_id,
+            ))
 
-    connection.close()
+            user = cursor.fetchone()
+
+    finally:
+        connection.close()
 
     if user is None:
         raise HTTPException(
@@ -1480,9 +1903,7 @@ def admin_user_details(
             'fullName': user['full_name'],
             'email': user['email'],
             'role': user['role'],
-            'preferredLanguage': user[
-                'preferred_language'
-            ],
+            'preferredLanguage': user['preferred_language'],
             'isActive': bool(
                 user['is_active']
             ),
@@ -1491,28 +1912,22 @@ def admin_user_details(
         },
         'activity': {
             'aiQuestions': counts['chat'],
-            'standardsViewed': counts[
-                'standard_view'
-            ],
-            'complianceChecks': counts[
-                'compliance_check'
-            ],
+            'standardsViewed': counts['standard_view'],
+            'complianceChecks': counts['compliance_check'],
             'documents': (
                 counts['document_upload']
                 + counts['document_question']
             ),
-            'documentUploads': counts[
-                'document_upload'
-            ],
-            'documentQuestions': counts[
-                'document_question'
-            ],
-            'servicesViewed': counts[
-                'service_view'
-            ]
+            'documentUploads': counts['document_upload'],
+            'documentQuestions': counts['document_question'],
+            'servicesViewed': counts['service_view']
         }
     }
 
+
+# ============================================================
+# ADMIN USER ACTIVITY
+# ============================================================
 
 @router.get(
     '/admin/users/{user_id}/activity'
@@ -1523,18 +1938,23 @@ def admin_user_activity(
 ):
     connection = get_connection()
 
-    user = connection.execute("""
-        SELECT
-            id,
-            full_name,
-            email
-        FROM users
-        WHERE id=?
-    """, (
-        user_id,
-    )).fetchone()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    id,
+                    full_name,
+                    email
+                FROM users
+                WHERE id=%s
+            """, (
+                user_id,
+            ))
 
-    connection.close()
+            user = cursor.fetchone()
+
+    finally:
+        connection.close()
 
     if user is None:
         raise HTTPException(
@@ -1559,29 +1979,23 @@ def admin_user_activity(
         },
         'summary': {
             'aiQuestions': counts['chat'],
-            'standardsViewed': counts[
-                'standard_view'
-            ],
-            'complianceChecks': counts[
-                'compliance_check'
-            ],
+            'standardsViewed': counts['standard_view'],
+            'complianceChecks': counts['compliance_check'],
             'documents': (
                 counts['document_upload']
                 + counts['document_question']
             ),
-            'documentUploads': counts[
-                'document_upload'
-            ],
-            'documentQuestions': counts[
-                'document_question'
-            ],
-            'servicesViewed': counts[
-                'service_view'
-            ]
+            'documentUploads': counts['document_upload'],
+            'documentQuestions': counts['document_question'],
+            'servicesViewed': counts['service_view']
         },
         'activities': activities
     }
 
+
+# ============================================================
+# ADMIN UPDATE USER
+# ============================================================
 
 @router.patch(
     '/admin/users/{user_id}'
@@ -1602,129 +2016,136 @@ def admin_update_user(
 
     connection = get_connection()
 
-    target_user = connection.execute("""
-        SELECT
-            id,
-            full_name,
-            email,
-            role,
-            is_active
-        FROM users
-        WHERE id=?
-    """, (
-        user_id,
-    )).fetchone()
+    try:
+        with connection.cursor() as cursor:
 
-    if target_user is None:
+            cursor.execute("""
+                SELECT
+                    id,
+                    full_name,
+                    email,
+                    role,
+                    is_active
+                FROM users
+                WHERE id=%s
+            """, (
+                user_id,
+            ))
+
+            target_user = cursor.fetchone()
+
+            if target_user is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail='User not found.'
+                )
+
+            if user_id == current_admin['id']:
+
+                if (
+                    request.is_active is False
+                    or (
+                        request.role is not None
+                        and request.role.lower()
+                        != 'admin'
+                    )
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            'You cannot deactivate or '
+                            'remove your own administrator role.'
+                        )
+                    )
+
+            new_role = target_user['role']
+
+            if request.role is not None:
+
+                new_role = (
+                    request.role.strip().lower()
+                )
+
+                if new_role not in {
+                    'user',
+                    'admin'
+                }:
+                    raise HTTPException(
+                        status_code=400,
+                        detail='Role must be user or admin.'
+                    )
+
+            new_is_active = bool(
+                target_user['is_active']
+            )
+
+            if request.is_active is not None:
+                new_is_active = request.is_active
+
+            removing_admin_access = (
+                target_user['role'] == 'admin'
+                and (
+                    new_role != 'admin'
+                    or not new_is_active
+                )
+            )
+
+            if removing_admin_access:
+
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM users
+                    WHERE role='admin'
+                    AND is_active=TRUE
+                """)
+
+                active_admin_count = (
+                    cursor.fetchone()['count']
+                )
+
+                if active_admin_count <= 1:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            'At least one active administrator '
+                            'must remain in the system.'
+                        )
+                    )
+
+            cursor.execute("""
+                UPDATE users
+                SET
+                    role=%s,
+                    is_active=%s
+                WHERE id=%s
+            """, (
+                new_role,
+                new_is_active,
+                user_id
+            ))
+
+            cursor.execute("""
+                SELECT
+                    id,
+                    full_name,
+                    email,
+                    role,
+                    preferred_language,
+                    is_active,
+                    created_at,
+                    last_login
+                FROM users
+                WHERE id=%s
+            """, (
+                user_id,
+            ))
+
+            updated_user = cursor.fetchone()
+
+        connection.commit()
+
+    finally:
         connection.close()
-
-        raise HTTPException(
-            status_code=404,
-            detail='User not found.'
-        )
-
-    if user_id == current_admin['id']:
-        if (
-            request.is_active is False
-            or (
-                request.role is not None
-                and request.role.lower()
-                != 'admin'
-            )
-        ):
-            connection.close()
-
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    'You cannot deactivate or '
-                    'remove your own administrator role.'
-                )
-            )
-
-    new_role = target_user['role']
-
-    if request.role is not None:
-        new_role = (
-            request.role.strip().lower()
-        )
-
-        if new_role not in {
-            'user',
-            'admin'
-        }:
-            connection.close()
-
-            raise HTTPException(
-                status_code=400,
-                detail='Role must be user or admin.'
-            )
-
-    new_is_active = bool(
-        target_user['is_active']
-    )
-
-    if request.is_active is not None:
-        new_is_active = request.is_active
-
-    removing_admin_access = (
-        target_user['role'] == 'admin'
-        and (
-            new_role != 'admin'
-            or not new_is_active
-        )
-    )
-
-    if removing_admin_access:
-        active_admin_count = connection.execute("""
-            SELECT COUNT(*)
-            FROM users
-            WHERE role='admin'
-            AND is_active=1
-        """).fetchone()[0]
-
-        if active_admin_count <= 1:
-            connection.close()
-
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    'At least one active administrator '
-                    'must remain in the system.'
-                )
-            )
-
-    connection.execute("""
-        UPDATE users
-        SET
-            role=?,
-            is_active=?
-        WHERE id=?
-    """, (
-        new_role,
-        1 if new_is_active else 0,
-        user_id
-    ))
-
-    connection.commit()
-
-    updated_user = connection.execute("""
-        SELECT
-            id,
-            full_name,
-            email,
-            role,
-            preferred_language,
-            is_active,
-            created_at,
-            last_login
-        FROM users
-        WHERE id=?
-    """, (
-        user_id,
-    )).fetchone()
-
-    connection.close()
 
     return {
         'success': True,
@@ -1734,9 +2155,7 @@ def admin_update_user(
             'fullName': updated_user['full_name'],
             'email': updated_user['email'],
             'role': updated_user['role'],
-            'preferredLanguage': updated_user[
-                'preferred_language'
-            ],
+            'preferredLanguage': updated_user['preferred_language'],
             'isActive': bool(
                 updated_user['is_active']
             ),
